@@ -1,0 +1,72 @@
+/docs
+test.py
+src/.env
+src/__pycache__
+__pycache__
+.venv
+venv
+uv.lock
+project.txt
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+*.env
+
+# VSCode
+.vscode/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# PyInstaller
+*.spec
+dist/
+build/
+
+# Test & coverage
+.coverage
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+
+# Model files and data dumps
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.tar.gz
+
+# SciSpaCy and spaCy model cache
+.spacy/
+*.whl
+*.tar.gz
+
+# Hugging Face cache
+~/.cache/
+cache/
+*.bin
+*.jsonl
+*.json
+
+# Streamlit
+.streamlit/
+
+# Logs
+*.log
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
