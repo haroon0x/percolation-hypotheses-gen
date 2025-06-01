@@ -70,3 +70,7 @@ cache/
 # OS files
 .DS_Store
 Thumbs.db
+
+
+src/literature_processing/chroma_db_data
+code.txt

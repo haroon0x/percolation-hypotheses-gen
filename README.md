@@ -13,13 +13,15 @@ This project aims to develop a hypothesis generation engine that explores the re
 
 ```
 percolation-hypotheses-gen
-├─ .env
 ├─ .python-version
 ├─ app
 │  └─ app.py
+├─ Frontend
+│  ├─ index.html
+│  ├─ main.js
+│  └─ style.css
 ├─ LICENSE
 ├─ log
-│  └─ output.log
 ├─ pyproject.toml
 ├─ README.md
 ├─ sample_pdfs
@@ -28,7 +30,6 @@ percolation-hypotheses-gen
 │  └─ 2505.11309v1.pdf
 └─ src
    ├─ agents
-   │  ├─ .env
    │  ├─ agent.py
    │  ├─ sub_agents.py
    │  └─ __init__.py
@@ -38,21 +39,16 @@ percolation-hypotheses-gen
    ├─ Hypothesis_Analysis
    │  ├─ complexity_score.py
    │  ├─ entity_labels.py
-   │  └─ information_density.py
+   │  ├─ information_density.py
+   │  └─ information_density_.py
    ├─ literature_processing
-   │  ├─ chroma_db_data
-   │  │  ├─ cfd7f316-2f58-40cb-bed5-c1549cef469f
-   │  │  │  ├─ data_level0.bin
-   │  │  │  ├─ header.bin
-   │  │  │  ├─ length.bin
-   │  │  │  └─ link_lists.bin
-   │  │  └─ chroma.sqlite3
    │  ├─ process_literature.py
    │  └─ __init__.py
    ├─ main.py
    ├─ models
    │  ├─ model.py
    │  └─ __init__.py
+   ├─ server.py
    ├─ utils
    │  ├─ data_utils.py
    │  ├─ hypothesis_utils.py

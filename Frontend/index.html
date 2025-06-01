@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complexity Slider - Percolation Point Hypothesis Generator</title>
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+     <script src="main.js" defer></script>
+</head>
+<body>
+    <div class="background-pattern"></div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>Hypothesis Percolation Slider</h1>
+            <p>Exploring the Percolation Point in Hypothesis Generation - Find the limits where information density meets human comprehension</p>
+        </div>
+
+        <div class="main-grid">
+            <div class="control-panel">
+                <h2>🔬 Hypothesis Controls</h2>
+                
+                <div class="form-group">
+                    <label for="topicInput" class="form-label">Scientific Phenomenon or Topic</label>
+                    <input 
+                        type="text" 
+                        id="topicInput" 
+                        class="form-input" 
+                        placeholder="e.g., protein folding, quantum entanglement, neural plasticity..."
+                        maxlength="200"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="domain" class="form-label">Research Domain</label>
+                    <select id="domain" class="form-select">
+                        <option value="general">🔬 General Science</option>
+                        <option value="biology">🧬 Biology & Life Sciences</option>
+                        <option value="physics">⚛️ Physics</option>
+                        <option value="chemistry">🧪 Chemistry</option>
+                        <option value="medicine">🏥 Medicine & Health</option>
+                        <option value="neuroscience">🧠 Neuroscience</option>
+                        <option value="environmental">🌍 Environmental Science</option>
+                        <option value="materials">🔩 Materials Science</option>
+                    </select>
+                </div>
+
+                <div class="file-upload" id="fileUploadContainer">
+                    <input type="file" id="literatureFile" accept=".pdf,.txt,.doc,.docx" multiple>
+                    <label for="literatureFile" class="file-upload-label" id="fileUploadLabel">
+                        📄 Upload Scientific Literature<br>
+                        <small>PDF, TXT, DOC, DOCX supported</small>
+                    </label>
+                    <div class="upload-progress"></div>
+                    <div class="uploaded-files" id="uploadedFiles"></div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="slider-label">
+                        <span>Complexity Level</span>
+                        <span class="complexity-value" id="complexityValue">50
+                            <span class="complexity-badge" id="complexityBadge">
+                                <span class="complexity-indicator"></span>
+                                <span id="complexityLabel">Moderate</span>
+                            </span>
+                        </span>
+                    </div>
+                    <input type="range" min="1" max="100" value="50" class="slider" id="complexitySlider">
+                </div>
+
+                <button class="generate-btn" id="generateBtn">
+                    <span id="generateBtnText">🚀 Generate Hypothesis</span>
+                </button>
+
+                <div class="percolation-indicator safe" id="percolationIndicator">
+                    <strong>✅ Status:</strong> Safe Zone - High Information Density Expected
+                </div>
+
+                <div class="status-bar">
+                    <span id="statusText">Ready</span>
+                    <span id="timestamp">--</span>
+                </div>
+            </div>
+         <div class="chart-section">
+            <div class="chart-container">
+                <h2>Information Density vs Complexity</h2>
+                <div class="chart-wrapper">
+                   <canvas id="densityChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+
+
+            <div class="hypothesis-metadata" id="hypothesisMetadata" style="display: none;">
+                <div class="metadata-item">
+                    <div class="metadata-label">Information Density</div>
+                    <div class="metadata-value" id="densityValue">--</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Complexity Score</div>
+                    <div class="metadata-value" id="complexityScore">--</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Validation Status</div>
+                    <div class="metadata-value" id="validationStatus">--</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Citation Count</div>
+                    <div class="metadata-value" id="citationCount">--</div>
+                </div>
+            </div>
+    
+        </div>
+        
+    </div>
+    <div class="citations" id="citationsSection" style="display: none;">
+        <h3>Supporting Literature</h3>
+        <div class="citations-list" id="citationsList">
+            <!-- Citations will be populated here -->
+        </div>
+    </div>
+    
+        
+        <div class="hypothesis-display">
+            <h2>Generated Hypothesis</h2>
+            <div class="hypothesis-content" id="hypothesisContent">
+                <div class="loading" style="display: none;" id="loadingSpinner">
+                    <div class="spinner"></div>
+                </div>
+                <div id="hypothesisText">
+                    Click "Generate Hypothesis" to create a new hypothesis based on the selected complexity level and research parameters.
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+ <script src="js/main.js" defer></script>
+</body>
+</html>
