@@ -456,7 +456,7 @@ function testChartWithMockData() {
             
             elements.hypothesisText.textContent = hypothesis.text;
             
-            elements.densityValue.textContent = `${hypothesis.info_density.overall_quality}%``;
+            elements.densityValue.textContent = `${hypothesis.info_density.overall_quality}%`;
             elements.complexityScore.textContent = hypothesis.Complexity_Score;
             elements.validationStatus.textContent = hypothesis.validationStatus;
             elements.citationCount.textContent = hypothesis.citationCount;
