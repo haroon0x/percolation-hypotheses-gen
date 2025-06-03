@@ -1,246 +1,423 @@
-import spacy
-import os
-import spacy.cli
-from spacy.tokens import Doc
-from typing import Set
-import textstat
-from spacy.lang.en.stop_words import STOP_WORDS
-from entity_labels import *
+import numpy as np
+from typing import List, Dict, Tuple
+from dataclasses import dataclass
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import re
 
-NLP_PROCESSOR = None
-SCISPACY_MODEL_NAME = "en_core_sci_md"
+@dataclass
+class HypothesisEvaluation:
+    """Container for multi-dimensional hypothesis evaluation"""
+    #hypothesis: str
+    specificity_score: float
+    falsifiability_score: float
+    conceptual_density: float
+    empirical_grounding: float
+    predictive_content: float
+    overall_quality: float
+    detailed_metrics: Dict
 
-
-MIN_LEMMA_LENGTH_FOR_NOUN_CONCEPTS = 3
-
-MIN_MAX_SCALING_PARAMS = {
-    'concept_richness_norm': {'min': 0.02, 'max': 0.35},
-    'proposition_density_norm': {'min': 0.3, 'max': 2.5},
-}
-
-FEATURE_WEIGHTS = {
-    'concept_richness': 0.45,
-    'proposition_density': 0.35,
-    'lexical_density': 0.20
-}
-
-def load_nlp_model(model_name: str = SCISPACY_MODEL_NAME):
-    global NLP_PROCESSOR
+class ScientificHypothesisEvaluator:
+    """
+    Multi-dimensional evaluator for scientific hypotheses
+    Based on philosophy of science principles
+    """
     
-    if NLP_PROCESSOR is not None:
-        current_model_base_name = NLP_PROCESSOR.meta.get('name', '')
-        requested_model_base_name = model_name.split('/')[-1].split('@')[0]
-        if current_model_base_name == requested_model_base_name:
-            return NLP_PROCESSOR
-        else:
-            NLP_PROCESSOR = None
-
-    primary_model_loaded = False
-    try:
-        NLP_PROCESSOR = spacy.load(model_name)
-        primary_model_loaded = True
-    except OSError:
-        try:
-            spacy.cli.download(model_name)
-            NLP_PROCESSOR = spacy.load(model_name)
-            primary_model_loaded = True
-        except SystemExit:
-             pass
-        except Exception:
-            pass
-
-    if not primary_model_loaded:
-        fallback_model = "en_core_web_md"
-        try:
-            NLP_PROCESSOR = spacy.load(fallback_model)
-        except OSError:
-            try:
-                spacy.cli.download(fallback_model)
-                NLP_PROCESSOR = spacy.load(fallback_model)
-            except SystemExit:
-                NLP_PROCESSOR = None
-            except Exception:
-                NLP_PROCESSOR = None
-        except Exception:
-             NLP_PROCESSOR = None
-            
-    if NLP_PROCESSOR is None:
-        print(f"CRITICAL ERROR: No spaCy model could be loaded after trying {model_name} and fallback.")
-    else:
-        print(f"spaCy model loaded: {NLP_PROCESSOR.meta.get('name', 'N/A')} (Version: {NLP_PROCESSOR.meta.get('version', 'N/A')})")
-    return NLP_PROCESSOR
-
-def get_total_word_and_sentence_count(doc: Doc) -> tuple[int, int]:
-    if not doc:
-        return (0,0)
-    total_words = 0
-    for token in doc:
-        if not token.is_punct and not token.is_space:
-            total_words += 1
-
-    sents_list = list(doc.sents)
-    num_sents = len(sents_list)
-    
-    if num_sents == 0 and total_words > 0:
-        num_sents = 1 
-
-    return (total_words, num_sents)
-
-def get_specific_concepts(doc: Doc) -> Set[str]:
-    if not doc: return set()
-    concepts: Set[str] = set()
-    entity_token_indices: Set[int] = set()
-
-    for ent in doc.ents:
-        if ent.label_ in INCLUDED_SCIENTIFIC_ENTITY_LABELS and ent.label_ not in EXCLUDED_GENERAL_NER_LABELS:
-            if ent.lemma_ and len(ent.lemma_.strip()) > 0:
-                concepts.add(ent.lemma_.lower())
-                for token_in_ent in ent:
-                    entity_token_indices.add(token_in_ent.i)
-    
-    for noun_chunk in doc.noun_chunks:
-        is_part_of_processed_entity = any(token.i in entity_token_indices for token in noun_chunk)
-        if is_part_of_processed_entity:
-            continue
-        root_token = noun_chunk.root
-        if (root_token.pos_ == "NOUN" or root_token.pos_ == "PROPN") and \
-           not root_token.is_stop and \
-           not root_token.is_punct and \
-           root_token.lemma_ and \
-           len(root_token.lemma_) >= MIN_LEMMA_LENGTH_FOR_NOUN_CONCEPTS:
-            concepts.add(root_token.lemma_.lower())
-
-    for token in doc:
-        if token.i in entity_token_indices:
-            continue
-        is_in_noun_chunk_already = False
-        for nc in doc.noun_chunks:
-            if token.i >= nc.start and token.i < nc.end:
-                is_in_noun_chunk_already = True
-                break
-        if is_in_noun_chunk_already:
-            continue
-
-        if (token.pos_ == "NOUN" or token.pos_ == "PROPN") and \
-           not token.is_stop and \
-           not token.is_punct and \
-           token.lemma_ and \
-           len(token.lemma_) >= MIN_LEMMA_LENGTH_FOR_NOUN_CONCEPTS:
-            concepts.add(token.lemma_.lower())
-            
-    return concepts
-
-def get_propositions_count(doc: Doc) -> int:
-    if not doc: return 0
-    proposition_count = 0
-    counted_verb_indices: Set[int] = set()
-
-    for sent in doc.sents:
-        sentence_has_proposition = False
-        for token in sent:
-            if token.pos_ == "VERB" and not token.is_aux:
-                if token.dep_ == "ROOT" or \
-                   (token.dep_ in {"ccomp", "xcomp", "advcl", "acl"} and token.head.pos_ == "VERB") or \
-                   (token.dep_ == "conj" and token.head.pos_ == "VERB" and token.head.i in counted_verb_indices):
-                    current_verb_head = token
-                    while current_verb_head.head != current_verb_head and current_verb_head.head.pos_ == "VERB" and current_verb_head.dep_ != "ROOT":
-                        current_verb_head = current_verb_head.head
-                    
-                    if current_verb_head.i not in counted_verb_indices:
-                        proposition_count += 1
-                        counted_verb_indices.add(current_verb_head.i)
-                        sentence_has_proposition = True
+    def __init__(self):
+        self.domain_terms = set()  # Will be populated from literature
+        self.tfidf_vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
         
-        if not sentence_has_proposition and len(sent.text.strip()) > 2 :
-            meaningful_tokens_in_sent = [t for t in sent if not t.is_punct and not t.is_space]
-            if len(meaningful_tokens_in_sent) > 1 :
-                proposition_count += 1
+    def load_domain_knowledge(self, literature_texts: List[str]):
+        """Extract domain-specific knowledge from literature"""
+
+        for text in literature_texts:
+            # Extract technical terms (assuming they're often capitalized or contain specific patterns)
+            technical_terms = re.findall(r'\b[A-Z][a-z]*(?:\s+[A-Z][a-z]*)*\b', text)
+            technical_terms.extend(re.findall(r'\b\w*(?:tion|sion|ment|ity|ness|ism)\b', text.lower()))
+            self.domain_terms.update(term.lower() for term in technical_terms)
+        
+        # Fit TF-IDF on literature for semantic comparison
+        if literature_texts:
+            self.tfidf_vectorizer.fit(literature_texts)
     
-    if proposition_count == 0 and len([t for t in doc if not t.is_space]) > 0:
-        return 1
-    return proposition_count
-
-def get_lexical_density(hypothesis_text: str) -> float:
-    if not hypothesis_text or not hypothesis_text.strip():
-        return 0.0
-    try:
-        score = textstat.lexical_density(hypothesis_text)
-        return score if score is not None else 30.0
-    except Exception:
-        return 30.0
-
-def calculate_intrinsic_information_density(hypothesis_text: str) -> float:
-    nlp = load_nlp_model()
-    if not nlp or not hypothesis_text or not hypothesis_text.strip():
-        return 0.0
-
-    doc = nlp(hypothesis_text)
-    total_words, num_sentences = get_total_word_and_sentence_count(doc)
-    if total_words == 0:
-        return 0.0
-    if num_sentences == 0:
-        num_sentences = 1
-
-    unique_concepts = get_specific_concepts(doc)
-    num_unique_specific_concepts = len(unique_concepts)
-    concept_richness_norm = num_unique_specific_concepts / total_words if total_words > 0 else 0
-
-    num_propositions = get_propositions_count(doc)
-    proposition_density_norm = num_propositions / num_sentences if num_sentences > 0 else 0
-    if num_sentences == 0 and num_propositions > 0:
-        proposition_density_norm = num_propositions
-
-    lex_density_val = get_lexical_density(hypothesis_text)
-
-    min_cr = MIN_MAX_SCALING_PARAMS['concept_richness_norm']['min']
-    max_cr = MIN_MAX_SCALING_PARAMS['concept_richness_norm']['max']
-    cr_0_1 = min(1.0, max(0.0, (concept_richness_norm - min_cr) / (max_cr - min_cr + 1e-6)))
-
-    min_pd = MIN_MAX_SCALING_PARAMS['proposition_density_norm']['min']
-    max_pd = MIN_MAX_SCALING_PARAMS['proposition_density_norm']['max']
-    pd_0_1 = min(1.0, max(0.0, (proposition_density_norm - min_pd) / (max_pd - min_pd + 1e-6)))
+    def evaluate_specificity(self, hypothesis: str) -> Tuple[float, Dict]:
+        """
+        Evaluate how specific vs. general the hypothesis is
+        More specific = higher information density
+        """
+        metrics = {}
+        
+        # Count specific quantitative terms
+        quantitative_terms = [
+            'increase', 'decrease', 'correlation', 'association', 'percentage',
+            'significantly', 'proportional', 'linear', 'exponential', 'ratio'
+        ]
+        metrics['quantitative_terms'] = sum(1 for term in quantitative_terms 
+                                          if term in hypothesis.lower())
+        
+        # Count specific measurements/conditions
+        measurement_patterns = [
+            r'\d+\s*(?:%|percent|fold|times|standard deviation)',
+            r'(?:p\s*<|p\s*=|r\s*=|α\s*=)',
+            r'(?:compared to|relative to|versus|vs\.)',
+        ]
+        metrics['measurement_references'] = sum(len(re.findall(pattern, hypothesis, re.IGNORECASE)) 
+                                             for pattern in measurement_patterns)
+        
+        # Count domain-specific terms
+        hypothesis_words = set(hypothesis.lower().split())
+        metrics['domain_terms'] = len(hypothesis_words.intersection(self.domain_terms))
+        
+        # Calculate specificity score
+        word_count = len(hypothesis.split())
+        specificity = (
+            (metrics['quantitative_terms'] / word_count) * 0.4 +
+            (metrics['measurement_references'] / word_count) * 0.4 +
+            (metrics['domain_terms'] / word_count) * 0.2
+        ) * 10  # Scale to reasonable range
+        
+        return min(specificity, 1.0), metrics
     
-    ld_0_1 = lex_density_val / 100.0
-
-    final_density_score_0_1 = (
-        FEATURE_WEIGHTS['concept_richness'] * cr_0_1 +
-        FEATURE_WEIGHTS['proposition_density'] * pd_0_1 +
-        FEATURE_WEIGHTS['lexical_density'] * ld_0_1
-    )
+    def evaluate_falsifiability(self, hypothesis: str) -> Tuple[float, Dict]:
+        """
+        Evaluate how testable/falsifiable the hypothesis is
+        Karl Popper's criterion for scientific hypotheses
+        """
+        metrics = {}
+        
+        # Testable prediction indicators
+        prediction_terms = [
+            'will', 'should', 'predicts', 'expects', 'anticipates',
+            'results in', 'leads to', 'causes', 'produces'
+        ]
+        metrics['prediction_terms'] = sum(1 for term in prediction_terms 
+                                        if term in hypothesis.lower())
+        
+        # Observable phenomena
+        observable_terms = [
+            'measured', 'observed', 'detected', 'recorded', 'monitored',
+            'behavior', 'response', 'change', 'difference', 'effect'
+        ]
+        metrics['observable_terms'] = sum(1 for term in observable_terms 
+                                        if term in hypothesis.lower())
+        
+        # Conditional statements (if-then structure)
+        conditional_patterns = [
+            r'if\s+.+\s+then',
+            r'when\s+.+\s+(?:will|should|would)',
+            r'given\s+.+\s+(?:expect|predict)',
+        ]
+        metrics['conditional_statements'] = sum(len(re.findall(pattern, hypothesis, re.IGNORECASE)) 
+                                              for pattern in conditional_patterns)
+        
+        # Avoid unfalsifiable terms
+        unfalsifiable_terms = ['always', 'never', 'all', 'none', 'impossible', 'certain']
+        metrics['unfalsifiable_terms'] = sum(1 for term in unfalsifiable_terms 
+                                           if term in hypothesis.lower())
+        
+        # Calculate falsifiability score
+        word_count = len(hypothesis.split())
+        falsifiability = (
+            (metrics['prediction_terms'] / word_count) * 0.3 +
+            (metrics['observable_terms'] / word_count) * 0.3 +
+            (metrics['conditional_statements'] / word_count) * 0.3 +
+            (1 - metrics['unfalsifiable_terms'] / word_count) * 0.1
+        ) * 5  # Scale to reasonable range
+        
+        return min(falsifiability, 1.0), metrics
     
-    final_density_score_0_100 = final_density_score_0_1 * 100.0
-    
-    return round(max(0.0, min(100.0, final_density_score_0_100)), 2)
-
-if __name__ == '__main__':
-    load_nlp_model() 
-
-    test_hypotheses_for_density = [
-        ("E=mc².", "Iconic, simple structure, one core concept/proposition in physics."),
-        ("The novel compound XZ-7 selectively inhibits kinase Y, leading to apoptosis in cancer cell line A, but not in normal cell line B, via the downregulation of protein Z.", "Highly specific entities, multiple propositions."),
-        ("Some things might affect other things in cells under certain circumstances sometimes.", "Vague, low specificity, few concrete propositions."),
-        ("This statement is short and about statements.", "Simple, self-referential, low specific concepts."),
-        ("Advanced neuro-computational models leveraging deep graph convolutional networks can predict synaptic plasticity changes from high-resolution connectomic and transcriptomic data integration.", "Technical terms, multiple concepts and implied relations."),
-        ("The Earth revolves around the Sun, which is a star at the center of our solar system, influencing terrestrial seasons.", "Multiple concepts, clear propositions."),
-        ("A catalytic converter reduces harmful emissions from an internal combustion engine through redox reactions involving precious metals like platinum, palladium, and rhodium.", "Specific technical terms, clear process described."),
-        ("Metabolic pathways are complex networks of biochemical reactions.", "Definitional, moderate concepts."),
-        ("The theory posits that by manipulating quantum entanglement, faster-than-light communication could be achieved, challenging current interpretations of special relativity and information causality within closed systems, potentially revolutionizing interstellar travel and computational paradigms.", "Highly abstract, many complex concepts and far-reaching implications.")
-    ]
-
-    if NLP_PROCESSOR:
-        print(f"\n--- Testing Intrinsic Information Density (using {NLP_PROCESSOR.meta['name']}) ---")
-        for i, (hyp_text, desc) in enumerate(test_hypotheses_for_density):
-            intrinsic_density_score = calculate_intrinsic_information_density(hyp_text)
-            print(f"\nHypothesis {i+1}: \"{hyp_text}\"")
-            print(f"Description: {desc}")
-            print(f"Intrinsic Information Density Score: {intrinsic_density_score:.2f}/100.0")
+    def evaluate_conceptual_density(self, hypothesis: str) -> Tuple[float, Dict]:
+        """
+        Evaluate the density of scientific concepts
+        High concept density = more information per unit text
+        """
+        metrics = {}
+        
+        # Count unique scientific concepts
+        hypothesis_words = hypothesis.lower().split()
+        metrics['unique_domain_terms'] = len(set(hypothesis_words).intersection(self.domain_terms))
+        metrics['total_words'] = len(hypothesis_words)
+        metrics['unique_words'] = len(set(hypothesis_words))
+        
+        # Scientific relationship indicators
+        relationship_terms = [
+            'relationship', 'association', 'correlation', 'interaction',
+            'modulates', 'regulates', 'influences', 'affects', 'mediates'
+        ]
+        metrics['relationship_terms'] = sum(1 for term in relationship_terms 
+                                          if term in hypothesis.lower())
+        
+        # Calculate conceptual density
+        if metrics['total_words'] > 0:
+            density = (
+                (metrics['unique_domain_terms'] / metrics['total_words']) * 0.5 +
+                (metrics['unique_words'] / metrics['total_words']) * 0.3 +
+                (metrics['relationship_terms'] / metrics['total_words']) * 0.2
+            )
+        else:
+            density = 0.0
             
-            if i < 2 or "XZ-7" in hyp_text:
-                doc_detail = NLP_PROCESSOR(hyp_text)
-                total_w, num_s = get_total_word_and_sentence_count(doc_detail)
-                concepts_found = get_specific_concepts(doc_detail)
-                props_found = get_propositions_count(doc_detail)
-                lex_d = get_lexical_density(hyp_text)
-                print(f"  Details: Words={total_w}, Sents={num_s}, Concepts={len(concepts_found)} ({list(concepts_found)[:10] if concepts_found else 'None'}), Props={props_found}, LexDensity={lex_d:.2f}")
-    else:
-        print("Skipping information_density tests as spaCy model could not be loaded.")
+        return density, metrics
+    
+    def evaluate_empirical_grounding(self, hypothesis: str, literature_texts: List[str] = None) -> Tuple[float, Dict]:
+        """
+        Evaluate how well grounded the hypothesis is in existing empirical work
+        """
+        metrics = {}
+        
+        if not literature_texts:
+            return 0.0, {'error': 'No literature provided'}
+        
+        # Calculate semantic similarity to literature
+        try:
+            literature_combined = ' '.join(literature_texts)
+            tfidf_matrix = self.tfidf_vectorizer.transform([hypothesis, literature_combined])
+            similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+            metrics['semantic_similarity'] = similarity
+        except:
+            metrics['semantic_similarity'] = 0.0
+        
+        # Count empirical evidence indicators
+        evidence_terms = [
+            'study', 'research', 'experiment', 'data', 'evidence',
+            'findings', 'results', 'analysis', 'investigation'
+        ]
+        metrics['evidence_terms'] = sum(1 for term in evidence_terms 
+                                      if term in hypothesis.lower())
+        
+        # Citation-like patterns
+        citation_patterns = [
+            r'\([^)]*\d{4}[^)]*\)',  # (Author, 2023)
+            r'according to',
+            r'previous research',
+            r'studies show'
+        ]
+        metrics['citation_indicators'] = sum(len(re.findall(pattern, hypothesis, re.IGNORECASE)) 
+                                           for pattern in citation_patterns)
+        
+        # Calculate grounding score
+        word_count = len(hypothesis.split())
+        grounding = (
+            metrics['semantic_similarity'] * 0.6 +
+            (metrics['evidence_terms'] / word_count) * 0.3 +
+            (metrics['citation_indicators'] / word_count) * 0.1
+        )
+        
+        return min(grounding, 1.0), metrics
+    
+    def evaluate_predictive_content(self, hypothesis: str) -> Tuple[float, Dict]:
+        """
+        Evaluate the predictive content of the hypothesis
+        """
+        metrics = {}
+        
+        # Future-oriented language
+        predictive_terms = [
+            'will', 'would', 'should', 'expect', 'predict', 'anticipate',
+            'likely', 'probable', 'potential', 'may', 'might'
+        ]
+        metrics['predictive_terms'] = sum(1 for term in predictive_terms 
+                                        if term in hypothesis.lower())
+        
+        # Causal language
+        causal_terms = [
+            'because', 'due to', 'caused by', 'results from', 'leads to',
+            'produces', 'generates', 'triggers', 'induces'
+        ]
+        metrics['causal_terms'] = sum(1 for term in causal_terms 
+                                    if term in hypothesis.lower())
+        
+        # Mechanistic explanations
+        mechanism_terms = [
+            'mechanism', 'process', 'pathway', 'mediates', 'through',
+            'via', 'by means of', 'operates', 'functions'
+        ]
+        metrics['mechanism_terms'] = sum(1 for term in mechanism_terms 
+                                       if term in hypothesis.lower())
+        
+        # Calculate predictive content
+        word_count = len(hypothesis.split())
+        predictive_content = (
+            (metrics['predictive_terms'] / word_count) * 0.4 +
+            (metrics['causal_terms'] / word_count) * 0.4 +
+            (metrics['mechanism_terms'] / word_count) * 0.2
+        ) * 5  # Scale to reasonable range
+        
+        return min(predictive_content, 1.0), metrics
+    
+    def evaluate_hypothesis(self, hypothesis: str, literature_texts: List[str] = None) -> HypothesisEvaluation:
+        """
+        Comprehensive evaluation of scientific hypothesis
+        """
+        if literature_texts:
+            self.load_domain_knowledge(literature_texts)
+        
+        # Evaluate each dimension
+        specificity, spec_metrics = self.evaluate_specificity(hypothesis)
+        falsifiability, fals_metrics = self.evaluate_falsifiability(hypothesis)
+        conceptual_density, conc_metrics = self.evaluate_conceptual_density(hypothesis)
+        empirical_grounding, emp_metrics = self.evaluate_empirical_grounding(hypothesis, literature_texts)
+        predictive_content, pred_metrics = self.evaluate_predictive_content(hypothesis)
+        
+        # Calculate overall quality score
+        overall_quality = (
+            specificity * 0.2 +
+            falsifiability * 0.25 +
+            conceptual_density * 0.2 +
+            empirical_grounding * 0.2 +
+            predictive_content * 0.15
+        )
+        
+        # Compile detailed metrics
+        detailed_metrics = {
+            'specificity': spec_metrics,
+            'falsifiability': fals_metrics,
+            'conceptual_density': conc_metrics,
+            'empirical_grounding': emp_metrics,
+            'predictive_content': pred_metrics
+        }
+        
+        return HypothesisEvaluation(
+            hypothesis=hypothesis,
+            specificity_score=specificity,
+            falsifiability_score=falsifiability,
+            conceptual_density=conceptual_density,
+            empirical_grounding=empirical_grounding,
+            predictive_content=predictive_content,
+            overall_quality=overall_quality,
+            detailed_metrics=detailed_metrics
+        )
+
+
+class InformationTheoreticAnalyzer:
+    """
+    Measures information content using information theory principles
+    """
+    
+    def __init__(self, corpus_texts: List[str] = None):
+        """
+        Initialize with background corpus for probability estimation
+        """
+        self.corpus_vocab = Counter()
+        self.total_words = 0
+        
+        if corpus_texts:
+            self.build_corpus_model(corpus_texts)
+    
+    def build_corpus_model(self, texts: List[str]):
+        """Build word frequency model from corpus"""
+        for text in texts:
+            words = [w.lower() for w in word_tokenize(text) if w.isalpha()]
+            self.corpus_vocab.update(words)
+            self.total_words += len(words)
+    
+    def calculate_surprisal(self, word: str) -> float:
+        """
+        Calculate surprisal (self-information) of a word
+        Surprisal = -log2(P(word))
+        """
+        if self.total_words == 0:
+            return 0.0
+            
+        word = word.lower()
+        word_freq = self.corpus_vocab.get(word, 1)  # Smoothing for unseen words
+        probability = word_freq / self.total_words
+        
+        return -math.log2(probability)
+    
+    def calculate_entropy(self, text: str) -> float:
+        """
+        Calculate Shannon entropy of text
+        H(X) = -Σ P(x) * log2(P(x))
+        """
+        words = [w.lower() for w in word_tokenize(text) if w.isalpha()]
+        if not words:
+            return 0.0
+            
+        word_counts = Counter(words)
+        total_words = len(words)
+        
+        entropy = 0.0
+        for count in word_counts.values():
+            probability = count / total_words
+            entropy -= probability * math.log2(probability)
+            
+        return entropy
+    
+    def calculate_perplexity(self, text: str) -> float:
+        """
+        Calculate perplexity based on corpus model
+        Perplexity = 2^(average surprisal)
+        """
+        words = [w.lower() for w in word_tokenize(text) if w.isalpha()]
+        if not words:
+            return 1.0
+            
+        total_surprisal = sum(self.calculate_surprisal(word) for word in words)
+        avg_surprisal = total_surprisal / len(words)
+        
+        return 2 ** avg_surprisal
+    
+    def calculate_information_density_metrics(self, hypothesis: str) -> Dict:
+        """
+        Calculate multiple information-theoretic measures
+        """
+        words = [w.lower() for w in word_tokenize(hypothesis) if w.isalpha()]
+        
+        if not words:
+            return {
+                'entropy': 0.0,
+                'perplexity': 1.0,
+                'avg_surprisal': 0.0,
+                'unique_word_ratio': 0.0,
+                'information_density': 0.0
+            }
+        
+        # Basic metrics
+        entropy = self.calculate_entropy(hypothesis)
+        perplexity = self.calculate_perplexity(hypothesis)
+        avg_surprisal = sum(self.calculate_surprisal(w) for w in words) / len(words)
+        unique_word_ratio = len(set(words)) / len(words)
+        
+        # Combined information density score
+        # Higher entropy + higher surprisal + higher uniqueness = higher info density
+        information_density = (entropy * 0.4 + 
+                             (avg_surprisal / 20) * 0.4 +  # Normalized surprisal
+                             unique_word_ratio * 0.2)
+        
+        return {
+            'entropy': entropy,
+            'perplexity': perplexity,
+            'avg_surprisal': avg_surprisal,
+            'unique_word_ratio': unique_word_ratio,
+            'information_density': information_density,
+            'word_count': len(words)
+        }
+
+# Example usage
+if __name__ == "__main__":
+    evaluator = ScientificHypothesisEvaluator()
+    
+    # Sample literature
+    literature = [
+        "Attention mechanisms in neural networks allow models to focus on relevant parts of input sequences.",
+        "Transformer architectures use self-attention to process sequences in parallel.",
+        "Research shows that attention improves performance on long-range dependency tasks."
+    ]
+    
+    hypothesis = """
+    If neural networks implement multi-head attention mechanisms with at least 8 heads,
+    then they will demonstrate significantly improved performance on sequence-to-sequence
+    tasks compared to models without attention, as measured by BLEU scores exceeding
+    baseline performance by 15% or more.
+    """
+    
+    result = evaluator.evaluate_hypothesis(hypothesis, literature)
+    
+    print("Multi-Dimensional Hypothesis Evaluation:")
+    print(f"Overall Quality Score: {result.overall_quality:.3f}")
+    print(f"Specificity: {result.specificity_score:.3f}")
+    print(f"Falsifiability: {result.falsifiability_score:.3f}")
+    print(f"Conceptual Density: {result.conceptual_density:.3f}")
+    print(f"Empirical Grounding: {result.empirical_grounding:.3f}")
+    print(f"Predictive Content: {result.predictive_content:.3f}")

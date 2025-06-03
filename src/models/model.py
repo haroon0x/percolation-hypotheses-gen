@@ -1,18 +1,29 @@
 from src.main import *
 
-
-def generate_hypothesis(phenomenon, complexity, file_media=None):
+def generate_hypothesis(phenomenon, complexity, pdf_data):
     contents = [f"Phenomenon or topic to create a hypothesis on : {phenomenon}", f"Complexity value : {complexity}"]
-    if file_media:
-        pdf_data = file_media.read()
-
-        pdf = types.Part.from_bytes(
-            data=pdf_data,
-            mime_type='application/pdf',
-        )
-        contents.append(pdf)
-    response = client.models.generate_content( model="gemini-2.0-flash", contents=contents ,config=GenerationConfig.gen_config_hyp_gen)
-    return response.text.strip()
+    if not pdf_data:
+        return False
+    pdf = types.Part.from_bytes(
+        data=pdf_data,
+        mime_type='application/pdf',
+    )
+    contents.append(pdf)
+    
+    try:
+        response = client.models.generate_content( model="gemini-2.0-flash", contents=contents ,config=GenerationConfig.gen_config_hyp_gen)
+        return response.text.strip()
+    except ServerError as e:
+        print(f"⚠️ primary_model is overloaded. Switching to fallback_model...")
+        try:
+            response = client.models.generate_content( model="gemini-2.0-flash-lite", contents=contents ,config=GenerationConfig.gen_config_hyp_gen)
+            return response.text.strip()
+        except Exception as fallback_error:
+            print("❌ Fallback model also failed:", fallback_error)
+            return "All models are currently unavailable. Please try again later."
+    except Exception as e:
+        print("🔥 Unexpected error:", e)
+        return "An unexpected error occurred during generation."
 
 def analyze_complexity(hypothesis : str):
     """

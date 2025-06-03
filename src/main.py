@@ -1,5 +1,6 @@
 from google import genai
 from google.genai import types
+from google.genai.errors import ServerError
 from src.config import *
 import dotenv
 import os

@@ -385,21 +385,14 @@ if __name__ == "__main__":
     import os
 
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    pdf_path = os.path.join(BASE_DIR, "sample_pdfs", "2505.11309v1.pdf")
+    pdf_path = os.path.join(BASE_DIR, "sample_pdfs", "1706.03762v7.pdf")
 
-    # Initialize the calculator
-    calculator = InformationDensityCalculator()
-    
-    # Example literature loading (you would provide actual file paths)
+    calculator = InformationDensityCalculator()    
     calculator.load_literature([pdf_path])
     
-    # Example hypothesis
     example_hypothesis = """
-    Recent studies have shown that machine learning algorithms can predict protein folding 
-    with high accuracy. This breakthrough, as demonstrated by AlphaFold, represents a 
-    significant advancement in computational biology. The implications for drug discovery 
-    are substantial, potentially reducing the time required for pharmaceutical development.
-    """
+"Attention mechanisms in neural networks improve sequence processing by focusing on relevant parts of the input.   
+ """
     
     # Calculate information density (would work after loading literature)
     result = calculator.calculate_information_density(example_hypothesis)

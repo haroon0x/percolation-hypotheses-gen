@@ -147,7 +147,6 @@ function testChartWithMockData() {
     const ctx = canvas.getContext('2d');
    if (typeof Chart === 'undefined') {
     console.error('Chart.js not loaded');
-    // Add fallback text or retry mechanism
     document.getElementById('densityChart').parentElement.innerHTML = 
         '<p style="text-align:center;color:#a0a0a0;">Chart loading...</p>';
     return;
@@ -256,7 +255,6 @@ function testChartWithMockData() {
 
        // Event listeners
         function bindEventListeners() {
-            // Complexity slider
             elements.complexitySlider.addEventListener('input', (e) => {
                 state.complexity = parseInt(e.target.value);
                 updateComplexityDisplay();
@@ -408,23 +406,21 @@ function testChartWithMockData() {
                 alert('Please enter a scientific topic or phenomenon.');
                 return;
             }
-
+            if(!uploadFile){
+                alert('Please upload a scientific literture (pdf)');
+                return;
+            }
             setLoadingState(true);
             
            try {
-                const requestData = {
-                    topic: topic,
-                    complexity: state.complexity,
-                    domain: state.domain,
-                    uploadedFiles: state.uploadedFiles.map(f => f.name) // or file IDs
-                };
-
+                const formData = new FormData();
+                 formData.append('phenomenon', topic);
+                 formData.append('complexity', state.complexity); // assuming it's an int
+                 formData.append('file_media', uploadFile);
+                
                 const response = await fetch(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.generateHypothesis}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestData)
+                    body: formData
                 });
 
                 if (!response.ok) {
@@ -432,8 +428,10 @@ function testChartWithMockData() {
                 }
 
                 const hypothesis = await response.json();
+                
                 displayHypothesis(hypothesis);
                 updateChart(hypothesis);
+
             } catch (error) {
                 console.error('Error generating hypothesis:', error);
                 elements.hypothesisText.textContent = 'Error generating hypothesis. Please try again.';
@@ -458,8 +456,8 @@ function testChartWithMockData() {
             
             elements.hypothesisText.textContent = hypothesis.text;
             
-            elements.densityValue.textContent = `${hypothesis.informationDensity}%`;
-            elements.complexityScore.textContent = hypothesis.complexity;
+            elements.densityValue.textContent = `${hypothesis.info_density.overall_quality}%``;
+            elements.complexityScore.textContent = hypothesis.Complexity_Score;
             elements.validationStatus.textContent = hypothesis.validationStatus;
             elements.citationCount.textContent = hypothesis.citationCount;
             
@@ -523,8 +521,9 @@ function testChartWithMockData() {
     }
     
     state.chartData.push({
-        x: hypothesis.complexity,
-        y: hypothesis.informationDensity
+        x: hypothesis.Complexity_Score,
+        y: hypothesis.info_density.overall_quality
+
     });
     
 
