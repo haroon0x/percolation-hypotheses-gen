@@ -5,7 +5,7 @@ import numpy as np
 
 try:
     nltk.data.find('tokenizers/punkt')
-except nltk.downloader.DownloadError:
+except LookupError:
     nltk.download('punkt', quiet=True)
 
 def calculate_complexity_score(hypothesis_text: str) -> float:
