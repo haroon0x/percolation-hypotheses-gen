@@ -36,7 +36,8 @@
             uploadedFiles: [],
             topic: '',
             domain: 'general',
-            chart: null
+            chart: null,
+            uploadedFile: null
         };
 
         // DOM elements cache
@@ -84,15 +85,7 @@
             updateUI();
             updateTimestamp();
 
-            console.log('App initialized successfully');
-            
-    setTimeout(() => {
-        if (state.chart) {
-            console.log('Auto-testing chart...');
-            testChartWithMockData();
-        }
-    }, 2000);
-
+            console.log('App initialized successfully');   
 
             }
     function initializeChart() {
@@ -244,11 +237,7 @@
 
             // File upload
             elements.literatureFile.addEventListener('change', handleFileUpload);
-    const testBtn = document.getElementById('testChartBtn');
-    if (testBtn) {
-        testBtn.addEventListener('click', testChartWithMockData);
-    }
-        }
+    
 
         // Update complexity display
         function updateComplexityDisplay() {
@@ -287,60 +276,41 @@
         }
 
         async function handleFileUpload(e) {
-            const files = Array.from(e.target.files);
-
-            for (const file of files) {
-                if (!state.uploadedFiles.find(f => f.name === file.name)) {
-                    try {
-                        // Show upload progress
-                        elements.fileUploadContainer.classList.add('uploading');
-
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        formData.append('domain', state.domain);
-
-                        const response = await fetch(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.uploadFile}`, {
-                            method: 'POST',
-                            body: formData
-                        });
-
-                        if (response.ok) {
-                            const result = await response.json();
-                            state.uploadedFiles.push({
-                                name: file.name,
-                                size: file.size,
-                                id: result.fileId // Backend should return file ID
-                            });
-                            addFileToDisplay(file);
-                        }
-                    } catch (error) {
-                        console.error('Upload failed:', error);
-                        alert(`Failed to upload ${file.name}`);
-                    } finally {
-                        elements.fileUploadContainer.classList.remove('uploading');
-                    }
-                }
-            }
-
-            updateFileUploadDisplay();
-        }
+    const files = Array.from(e.target.files);
+    
+    if (files.length > 0) {
+        const file = files[0]; // Take only the first file
+        state.uploadedFile = file; // Store the actual file object
+        
+        // Update display without uploading to server yet
+        state.uploadedFiles = [{ name: file.name, size: file.size }];
+        updateFileUploadDisplay();
+        console.log('File selected:', file.name);
+    }
+}
 
         // Add file to display
         function addFileToDisplay(file) {
-            const fileDiv = document.createElement('div');
-            fileDiv.className = 'uploaded-file';
-            fileDiv.innerHTML = `
-                <span>📄 ${file.name} (${formatFileSize(file.size)})</span>
-                <button class="remove-file" onclick="removeFile('${file.name}')">&times;</button>
-            `;
-            elements.uploadedFiles.appendChild(fileDiv);
-        }
+    const fileDiv = document.createElement('div');
+    fileDiv.className = 'uploaded-file';
+    fileDiv.innerHTML = `
+        <span>📄 ${file.name} (${formatFileSize(file.size)})</span>
+        <button class="remove-file" onclick="removeFile('${file.name.replace(/'/g, "\\'")}')">×</button>
+    `;
+    elements.uploadedFiles.appendChild(fileDiv);
+}
 
         // Remove file
-        function removeFile(fileName) {
-            state.uploadedFiles = state.uploadedFiles.filter(f => f.name !== fileName);
-            updateFileUploadDisplay();
-        }
+       function removeFile(fileName) {
+    state.uploadedFiles = state.uploadedFiles.filter(f => f.name !== fileName);
+    state.uploadedFile = null; // CLEAR THE ACTUAL FILE TOO
+    updateFileUploadDisplay();
+    
+    // Also clear the file input
+    if (elements.literatureFile) {
+        elements.literatureFile.value = '';
+    }
+}
 
         // Update file upload display
         function updateFileUploadDisplay() {
@@ -360,46 +330,91 @@
         // Generate hypothesis
         async function generateHypothesis() {
             if (state.isLoading) return;
-            
-            const topic = elements.topicInput.value.trim();
-            if (!topic) {
-                alert('Please enter a scientific topic or phenomenon.');
-                return;
-            }
-            if(!uploadFile){
-                alert('Please upload a scientific literture (pdf)');
-                return;
-            }
+ 
+    const topic = elements.topicInput.value.trim();
+    if (!topic) {
+        alert('Please enter a scientific topic or phenomenon.');
+        elements.topicInput.focus();
+        return;
+    }
+    
+    if (!state.uploadedFile) {
+        alert('Please upload a scientific literature (PDF file).');
+        elements.literatureFile.focus();
+        return;
+    }
+    
+    // Additional file validation
+    if (state.uploadedFile.size > 10 * 1024 * 1024) { // 10MB limit
+        alert('File size must be less than 10MB.');
+        return;
+    }
+    
+    if (!state.uploadedFile.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please upload a PDF file.');
+        return;
+    }
+    
+
             setLoadingState(true);
-            
-           try {
+
+            try {
                 const formData = new FormData();
-                 formData.append('phenomenon', topic);
-                 formData.append('complexity', state.complexity); // assuming it's an int
-                 formData.append('file_media', uploadFile);
-                
+                formData.append('phenomenon', topic);
+                formData.append('complexity', state.complexity.toString());
+                formData.append('file_media', state.uploadedFile); // CHANGE: Use correct variable
+
+                 console.log('Sending request with:', {
+            phenomenon: topic,
+            complexity: state.complexity,
+            fileName: state.uploadedFile.name,
+            fileSize: state.uploadedFile.size
+        });
+        
+
                 const response = await fetch(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.generateHypothesis}`, {
                     method: 'POST',
                     body: formData
                 });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const hypothesis = await response.json();
-                
-                displayHypothesis(hypothesis);
-                updateChart(hypothesis);
-
+             console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+               if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.detail || errorData.message || errorMessage;
+                console.error('Error response:', errorData);
+            } catch (e) {
+                console.error('Could not parse error response');
+            }
+            throw new Error(errorMessage);
+        }
+            
+                const result = await response.json(); 
+                console.log('Success response:', result);
+                displayHypothesis(result); 
+                updateChart(result);
+            
             } catch (error) {
                 console.error('Error generating hypothesis:', error);
-                elements.hypothesisText.textContent = 'Error generating hypothesis. Please try again.';
+        
+
+        let userMessage = 'Error generating hypothesis. ';
+        if (error.message.includes('Failed to fetch')) {
+            userMessage += 'Please check your internet connection and try again.';
+        } else if (error.message.includes('timeout')) {
+            userMessage += 'Request timed out. Please try again.';
+        } else {
+            userMessage += error.message;
+        }
+        
+        alert(userMessage);
+        elements.hypothesisText.textContent = userMessage;
             } finally {
                 setLoadingState(false);
             }
-        }
-        
+            }       
+
         function setLoadingState(loading) {
         state.isLoading = loading;
         elements.generateBtn.disabled = loading;
@@ -411,18 +426,23 @@
 
        
 
-        function displayHypothesis(hypothesis) {
-            state.currentHypothesis = hypothesis;
+        function displayHypothesis(result) {
+              if (!result) {
+        console.error('No result provided to displayHypothesis');
+        return;
+    }
+            state.currentHypothesis = result;
             
-            elements.hypothesisText.textContent = hypothesis.text;
+            elements.hypothesisText.textContent = result.hypothesis || 'No hypothesis generated';
             
-            elements.densityValue.textContent = `${hypothesis.info_density.overall_quality}%`;
-            elements.complexityScore.textContent = hypothesis.Complexity_Score;
-            elements.validationStatus.textContent = hypothesis.validationStatus;
-            elements.citationCount.textContent = hypothesis.citationCount;
+             elements.densityValue.textContent = `${result.info_density?.overall_quality ?? 0}%`;
+    elements.complexityScore.textContent = result.Complexity_Score ?? 0;
+    elements.validationStatus.textContent = result.validationStatus || 'Pending';
+    elements.citationCount.textContent = result.citationCount ?? 0;
+    
             
             elements.hypothesisMetadata.style.display = 'grid';
-            elements.citationsSection.style.display = hypothesis.citationCount > 0 ? 'block' : 'none';
+            elements.citationsSection.style.display = result.citationCount > 0 ? 'block' : 'none';
             
             elements.citationsList.innerHTML = '';
             hypothesis.citations.forEach(citation => {
@@ -454,7 +474,7 @@
             }
 
         function styleMetadataValues(hypothesis) {
-            const density = hypothesis.informationDensity;
+            const density = result.info_density.overall_quality;
             if (density >= 60) {
                 elements.densityValue.style.color = 'var(--accent-green)';
             } else if (density >= 30) {
@@ -474,15 +494,15 @@
         }
 
         // Update chart with new data point
-        function updateChart(hypothesis) {
+        function updateChart(result) {
     if (!state.chart) {
         console.error('Chart not initialized');
         return;
     }
     
     state.chartData.push({
-        x: hypothesis.Complexity_Score,
-        y: hypothesis.info_density.overall_quality
+        x: result.Complexity_Score,
+        y: result.info_density.overall_quality
 
     });
     
@@ -492,7 +512,7 @@
     }
     
     try {
-        state.chart.data.datasets[1].data = [...state.chartData];
+        state.chart.data.datasets[0].data = [...state.chartData];
         state.chart.update();
         console.log('Chart updated with new data point');
     } catch (error) {
