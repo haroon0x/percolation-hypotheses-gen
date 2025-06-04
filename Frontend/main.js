@@ -238,7 +238,7 @@
             // File upload
             elements.literatureFile.addEventListener('change', handleFileUpload);
     
-
+        }
         // Update complexity display
         function updateComplexityDisplay() {
             elements.complexityValue.textContent = state.complexity;
@@ -540,4 +540,6 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        document.addEventListener('DOMContentLoaded', initializeApp);}
+        document.addEventListener('DOMContentLoaded', initializeApp);
+        
+    
