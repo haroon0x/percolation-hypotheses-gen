@@ -1,5 +1,5 @@
     const API_CONFIG = {
-            baseURL: 'http://localhost:8000/api', // Change to your backend URL
+            baseURL: 'https://percolation-hypotheses.onrender.com/', // Change to your backend URL
             endpoints: {
                 generateHypothesis: '/generate-hypothesis',
                 uploadFile: '/upload-literature',
@@ -25,46 +25,6 @@
                 throw error;
             }
         }
-// Add this function
-function testChartWithMockData() {
-    console.log('Testing chart with mock data...');
-    
-    const mockHypotheses = [
-        { 
-            complexity: 20, 
-            informationDensity: 85, 
-            text: "Low complexity leads to high information density in neural networks", 
-            citationCount: 5, 
-            validationStatus: "Highly Supported", 
-            citations: ["Smith et al. 2023", "Jones 2024"] 
-        },
-        { 
-            complexity: 45, 
-            informationDensity: 70, 
-            text: "Moderate complexity maintains good information transfer", 
-            citationCount: 3, 
-            validationStatus: "Partially Supported", 
-            citations: ["Brown 2023"] 
-        },
-        { 
-            complexity: 80, 
-            informationDensity: 30, 
-            text: "High complexity reduces information density due to noise", 
-            citationCount: 1, 
-            validationStatus: "Limited Support", 
-            citations: ["Wilson 2024"] 
-        }
-    ];
-
-    mockHypotheses.forEach((hypothesis, index) => {
-        setTimeout(() => {
-            console.log(`Adding data point ${index + 1}:`, hypothesis);
-            displayHypothesis(hypothesis);
-            updateChart(hypothesis);
-        }, index * 2000); // 2 second intervals
-    });
-}
-
 
         // Global state management
         const state = {
