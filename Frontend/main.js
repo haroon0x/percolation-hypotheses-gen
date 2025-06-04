@@ -1,5 +1,5 @@
     const API_CONFIG = {
-            baseURL: 'https://percolation-hypotheses.onrender.com/', // Change to your backend URL
+            baseURL: 'https://percolation-hypotheses-gen.onrender.com', // Change to your backend URL
             endpoints: {
                 generateHypothesis: '/generate-hypothesis',
                 uploadFile: '/upload-literature',

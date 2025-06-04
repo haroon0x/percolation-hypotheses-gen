@@ -11,7 +11,19 @@ This project aims to develop a hypothesis generation engine that explores the re
 
 
 ## Hypothesis Generation
-## Information density
+
+# Information Density Analysis
+
+## Problem Statement
+
+Measuring the *information density* of scientific hypotheses poses a fundamental challenge: the concept is inherently qualitative and multidimensional, yet computational approaches often attempt to reduce it to a single quantitative score. Traditional methods typically rely on either citation counts and semantic similarity—overlooking linguistic complexity and novelty—or focus solely on information-theoretic metrics like entropy and perplexity, ignoring scientific rigor and testability. This creates a false dichotomy between computational sophistication and scientific validity. A hypothesis may be linguistically complex and novel, yet scientifically unfalsifiable; or it may be rigorous and testable, yet predictable and low in informational value.
+
+## Dual-Framework Evaluation
+
+This project introduces a combined evaluation framework that addresses information density from two complementary perspectives: **information-theoretic analysis** and **scientific quality assessment**. The information-theoretic component quantifies linguistic complexity, domain novelty, and communication efficiency using entropy, surprisal, and perplexity relative to domain-specific corpora. The scientific quality component assesses falsifiability, specificity, empirical grounding, and predictive content, drawing from established principles in the philosophy of science.
+
+The resulting scores are integrated using configurable weighting schemes tailored to different contexts—such as research discovery (emphasizing novelty), grant evaluation (emphasizing rigor), or educational use (balanced assessment). Outputs are presented as interpretable multidimensional scores rather than a single opaque number, enabling precise identification of areas needing improvement, whether in linguistic expression, scientific depth, or both.
+
 
 
 
