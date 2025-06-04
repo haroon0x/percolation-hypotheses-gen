@@ -540,4 +540,4 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        document.addEventListener('DOMContentLoaded', initializeApp);
+        document.addEventListener('DOMContentLoaded', initializeApp);}

@@ -1,12 +1,12 @@
-chromadb>=1.0.9
+#chromadb>=1.0.9
 click>=8.2.0
 fastapi>=0.115.9
 google-genai>=1.15.0
-langchain-text-splitters>=0.3.8
+#langchain-text-splitters>=0.3.8
 nltk>=3.9.1
 numpy>=2.2.5
 pypdf2>=3.0.1
-python-dotenv>=1.1.0
+#python-dotenv>=1.1.0
 python-multipart>=0.0.20
 scikit-learn>=1.6.1
 sentence-transformers>=4.1.0

@@ -9,7 +9,7 @@ import io
 from typing import List
 from src.Hypothesis_Analysis.complexity_score import calculate_complexity_score
 from dataclasses import asdict
-import traceback , logging ,sys
+import traceback 
 
 app = FastAPI()
 
@@ -18,25 +18,14 @@ class Hypothesis(BaseModel):
     Complexity : int
     Info_Density : float
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('app.log')
-    ]
-)
-logger = logging.getLogger(__name__)
 
 
 @app.post("/generate-hypothesis")
 async def get_hypothesis(
     phenomenon: str = Form(...),
     complexity: int = Form(...),
-    file_media: UploadFile = File(...) 
-    ):
-    logger.info(f"Received request - Phenomenon: {phenomenon}, Complexity: {complexity}, File: {file_media.filename}")
-    
+    file_media: UploadFile = File(...) ):
+ 
     evaluator = ScientificHypothesisEvaluator()
     try:
         if not phenomenon or len(phenomenon.strip()) == 0:
@@ -97,14 +86,12 @@ async def get_hypothesis(
             "file_processed": file_media.filename,
         }
         
-        logger.info("Request processed successfully")
+
         return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in get_hypothesis: {str(e)}")
-        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500, 
             detail={
@@ -116,11 +103,6 @@ async def get_hypothesis(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    logger.error(f"Global exception handler caught: {str(exc)}")
-    logger.error(f"Request URL: {request.url}")
-    logger.error(f"Request method: {request.method}")
-    logger.error(f"Full traceback: {traceback.format_exc()}")
-    
     return JSONResponse(
         status_code=500,
         content={
