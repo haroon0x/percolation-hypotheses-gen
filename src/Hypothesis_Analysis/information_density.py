@@ -24,19 +24,16 @@ class ScientificHypothesisEvaluator:
     """
     
     def __init__(self):
-        self.domain_terms = set()  # Will be populated from literature
+        self.domain_terms = set() 
         self.tfidf_vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
         
     def load_domain_knowledge(self, literature_texts: List[str]):
         """Extract domain-specific knowledge from literature"""
 
         for text in literature_texts:
-            # Extract technical terms (assuming they're often capitalized or contain specific patterns)
             technical_terms = re.findall(r'\b[A-Z][a-z]*(?:\s+[A-Z][a-z]*)*\b', text)
             technical_terms.extend(re.findall(r'\b\w*(?:tion|sion|ment|ity|ness|ism)\b', text.lower()))
             self.domain_terms.update(term.lower() for term in technical_terms)
-        
-        # Fit TF-IDF on literature for semantic comparison
         if literature_texts:
             self.tfidf_vectorizer.fit(literature_texts)
     
@@ -46,16 +43,12 @@ class ScientificHypothesisEvaluator:
         More specific = higher information density
         """
         metrics = {}
-        
-        # Count specific quantitative terms
         quantitative_terms = [
             'increase', 'decrease', 'correlation', 'association', 'percentage',
             'significantly', 'proportional', 'linear', 'exponential', 'ratio'
         ]
         metrics['quantitative_terms'] = sum(1 for term in quantitative_terms 
                                           if term in hypothesis.lower())
-        
-        # Count specific measurements/conditions
         measurement_patterns = [
             r'\d+\s*(?:%|percent|fold|times|standard deviation)',
             r'(?:p\s*<|p\s*=|r\s*=|α\s*=)',
@@ -64,19 +57,17 @@ class ScientificHypothesisEvaluator:
         metrics['measurement_references'] = sum(len(re.findall(pattern, hypothesis, re.IGNORECASE)) 
                                              for pattern in measurement_patterns)
         
-        # Count domain-specific terms
         hypothesis_words = set(hypothesis.lower().split())
         metrics['domain_terms'] = len(hypothesis_words.intersection(self.domain_terms))
-        
-        # Calculate specificity score
+
         word_count = len(hypothesis.split())
         specificity = (
             (metrics['quantitative_terms'] / word_count) * 0.4 +
             (metrics['measurement_references'] / word_count) * 0.4 +
             (metrics['domain_terms'] / word_count) * 0.2
-        ) * 10  # Scale to reasonable range
+        ) * 10  
         
-        return min(specificity, 1.0), metrics
+        return min(specificity, 1), metrics
     
     def evaluate_falsifiability(self, hypothesis: str) -> Tuple[float, Dict]:
         """
@@ -85,7 +76,6 @@ class ScientificHypothesisEvaluator:
         """
         metrics = {}
         
-        # Testable prediction indicators
         prediction_terms = [
             'will', 'should', 'predicts', 'expects', 'anticipates',
             'results in', 'leads to', 'causes', 'produces'
@@ -93,15 +83,13 @@ class ScientificHypothesisEvaluator:
         metrics['prediction_terms'] = sum(1 for term in prediction_terms 
                                         if term in hypothesis.lower())
         
-        # Observable phenomena
         observable_terms = [
             'measured', 'observed', 'detected', 'recorded', 'monitored',
             'behavior', 'response', 'change', 'difference', 'effect'
         ]
         metrics['observable_terms'] = sum(1 for term in observable_terms 
                                         if term in hypothesis.lower())
-        
-        # Conditional statements (if-then structure)
+
         conditional_patterns = [
             r'if\s+.+\s+then',
             r'when\s+.+\s+(?:will|should|would)',
@@ -110,19 +98,17 @@ class ScientificHypothesisEvaluator:
         metrics['conditional_statements'] = sum(len(re.findall(pattern, hypothesis, re.IGNORECASE)) 
                                               for pattern in conditional_patterns)
         
-        # Avoid unfalsifiable terms
         unfalsifiable_terms = ['always', 'never', 'all', 'none', 'impossible', 'certain']
         metrics['unfalsifiable_terms'] = sum(1 for term in unfalsifiable_terms 
                                            if term in hypothesis.lower())
-        
-        # Calculate falsifiability score
+    
         word_count = len(hypothesis.split())
         falsifiability = (
             (metrics['prediction_terms'] / word_count) * 0.3 +
             (metrics['observable_terms'] / word_count) * 0.3 +
             (metrics['conditional_statements'] / word_count) * 0.3 +
             (1 - metrics['unfalsifiable_terms'] / word_count) * 0.1
-        ) * 5  # Scale to reasonable range
+        ) * 5  
         
         return min(falsifiability, 1.0), metrics
     
@@ -133,13 +119,11 @@ class ScientificHypothesisEvaluator:
         """
         metrics = {}
         
-        # Count unique scientific concepts
         hypothesis_words = hypothesis.lower().split()
         metrics['unique_domain_terms'] = len(set(hypothesis_words).intersection(self.domain_terms))
         metrics['total_words'] = len(hypothesis_words)
         metrics['unique_words'] = len(set(hypothesis_words))
         
-        # Scientific relationship indicators
         relationship_terms = [
             'relationship', 'association', 'correlation', 'interaction',
             'modulates', 'regulates', 'influences', 'affects', 'mediates'
@@ -147,7 +131,6 @@ class ScientificHypothesisEvaluator:
         metrics['relationship_terms'] = sum(1 for term in relationship_terms 
                                           if term in hypothesis.lower())
         
-        # Calculate conceptual density
         if metrics['total_words'] > 0:
             density = (
                 (metrics['unique_domain_terms'] / metrics['total_words']) * 0.5 +
@@ -167,8 +150,6 @@ class ScientificHypothesisEvaluator:
         
         if not literature_texts:
             return 0.0, {'error': 'No literature provided'}
-        
-        # Calculate semantic similarity to literature
         try:
             literature_combined = ' '.join(literature_texts)
             tfidf_matrix = self.tfidf_vectorizer.transform([hypothesis, literature_combined])
@@ -177,15 +158,13 @@ class ScientificHypothesisEvaluator:
         except:
             metrics['semantic_similarity'] = 0.0
         
-        # Count empirical evidence indicators
         evidence_terms = [
             'study', 'research', 'experiment', 'data', 'evidence',
             'findings', 'results', 'analysis', 'investigation'
         ]
         metrics['evidence_terms'] = sum(1 for term in evidence_terms 
                                       if term in hypothesis.lower())
-        
-        # Citation-like patterns
+    
         citation_patterns = [
             r'\([^)]*\d{4}[^)]*\)',  # (Author, 2023)
             r'according to',
@@ -195,7 +174,6 @@ class ScientificHypothesisEvaluator:
         metrics['citation_indicators'] = sum(len(re.findall(pattern, hypothesis, re.IGNORECASE)) 
                                            for pattern in citation_patterns)
         
-        # Calculate grounding score
         word_count = len(hypothesis.split())
         grounding = (
             metrics['semantic_similarity'] * 0.6 +
@@ -211,7 +189,6 @@ class ScientificHypothesisEvaluator:
         """
         metrics = {}
         
-        # Future-oriented language
         predictive_terms = [
             'will', 'would', 'should', 'expect', 'predict', 'anticipate',
             'likely', 'probable', 'potential', 'may', 'might'
@@ -219,7 +196,7 @@ class ScientificHypothesisEvaluator:
         metrics['predictive_terms'] = sum(1 for term in predictive_terms 
                                         if term in hypothesis.lower())
         
-        # Causal language
+      
         causal_terms = [
             'because', 'due to', 'caused by', 'results from', 'leads to',
             'produces', 'generates', 'triggers', 'induces'
@@ -227,21 +204,20 @@ class ScientificHypothesisEvaluator:
         metrics['causal_terms'] = sum(1 for term in causal_terms 
                                     if term in hypothesis.lower())
         
-        # Mechanistic explanations
+ 
         mechanism_terms = [
             'mechanism', 'process', 'pathway', 'mediates', 'through',
             'via', 'by means of', 'operates', 'functions'
         ]
         metrics['mechanism_terms'] = sum(1 for term in mechanism_terms 
                                        if term in hypothesis.lower())
-        
-        # Calculate predictive content
+   
         word_count = len(hypothesis.split())
         predictive_content = (
             (metrics['predictive_terms'] / word_count) * 0.4 +
             (metrics['causal_terms'] / word_count) * 0.4 +
             (metrics['mechanism_terms'] / word_count) * 0.2
-        ) * 5  # Scale to reasonable range
+        ) * 5  
         
         return min(predictive_content, 1.0), metrics
     
@@ -252,14 +228,13 @@ class ScientificHypothesisEvaluator:
         if literature_texts:
             self.load_domain_knowledge(literature_texts)
         
-        # Evaluate each dimension
+        
         specificity, spec_metrics = self.evaluate_specificity(hypothesis)
         falsifiability, fals_metrics = self.evaluate_falsifiability(hypothesis)
         conceptual_density, conc_metrics = self.evaluate_conceptual_density(hypothesis)
         empirical_grounding, emp_metrics = self.evaluate_empirical_grounding(hypothesis, literature_texts)
         predictive_content, pred_metrics = self.evaluate_predictive_content(hypothesis)
         
-        # Calculate overall quality score
         overall_quality = (
             specificity * 0.2 +
             falsifiability * 0.25 +
@@ -268,7 +243,6 @@ class ScientificHypothesisEvaluator:
             predictive_content * 0.15
         )
         
-        # Compile detailed metrics
         detailed_metrics = {
             'specificity': spec_metrics,
             'falsifiability': fals_metrics,
@@ -278,7 +252,6 @@ class ScientificHypothesisEvaluator:
         }
         
         return HypothesisEvaluation(
-            hypothesis=hypothesis,
             specificity_score=specificity,
             falsifiability_score=falsifiability,
             conceptual_density=conceptual_density,
@@ -320,7 +293,7 @@ class InformationTheoreticAnalyzer:
             return 0.0
             
         word = word.lower()
-        word_freq = self.corpus_vocab.get(word, 1)  # Smoothing for unseen words
+        word_freq = self.corpus_vocab.get(word, 1) 
         probability = word_freq / self.total_words
         
         return -math.log2(probability)

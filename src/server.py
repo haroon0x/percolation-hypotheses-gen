@@ -9,9 +9,8 @@ import io
 from typing import List
 from src.Hypothesis_Analysis.complexity_score import calculate_complexity_score
 from dataclasses import asdict
-import traceback , logging
+import traceback , logging ,sys
 
-evaluator = ScientificHypothesisEvaluator()
 app = FastAPI()
 
 class Hypothesis(BaseModel):
@@ -38,91 +37,58 @@ async def get_hypothesis(
     ):
     logger.info(f"Received request - Phenomenon: {phenomenon}, Complexity: {complexity}, File: {file_media.filename}")
     
+    evaluator = ScientificHypothesisEvaluator()
     try:
-        # Validate inputs
         if not phenomenon or len(phenomenon.strip()) == 0:
-            logger.error("Empty phenomenon provided")
             raise HTTPException(status_code=400, detail="Phenomenon cannot be empty")
         
         if complexity < 0 or complexity > 100:
-            logger.error(f"Invalid complexity value: {complexity}")
             raise HTTPException(status_code=400, detail="Complexity must be between 0 and 100")
         
         if not file_media:
-            logger.error("No file provided")
             raise HTTPException(status_code=400, detail="File is required")
         
-        # Check file type
+  
         if not file_media.filename.lower().endswith('.pdf'):
-            logger.error(f"Invalid file type: {file_media.filename}")
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
         
-        # Check file size (limit to 10MB)
         file_size = 0
         pdf_data = await file_media.read()
         file_size = len(pdf_data)
         
         if file_size == 0:
-            logger.error("Empty file provided")
             raise HTTPException(status_code=400, detail="File is empty")
         
         if file_size > 10 * 1024 * 1024:  # 10MB limit
-            logger.error(f"File too large: {file_size} bytes")
             raise HTTPException(status_code=400, detail="File size must be less than 10MB")
         
-        logger.info(f"File validation passed - Size: {file_size} bytes")
-        
-        # Process the hypothesis generation
-        logger.info("Starting hypothesis generation...")
         try:
             hypothesis = generate_hypothesis(phenomenon, complexity, pdf_data)
-            logger.info(f"Hypothesis generated successfully: {hypothesis[:100]}...")
         except Exception as e:
-            logger.error(f"Error in generate_hypothesis: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Failed to generate hypothesis: {str(e)}")
         
-        # Extract text from PDF
-        logger.info("Extracting text from PDF...")
         try:
             pdf_texts = extract_text_from_pdf_bytes(pdf_data)
-            logger.info(f"PDF text extracted successfully - Length: {len(pdf_texts)} characters")
         except Exception as e:
-            logger.error(f"Error in extract_text_from_pdf_bytes: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Failed to extract PDF text: {str(e)}")
-        
-        # Evaluate hypothesis
-        logger.info("Evaluating hypothesis...")
+
         try:
-            info_density = evaluator.evaluate_hypothesis(hypothesis=hypothesis, literature_texts=pdf_texts)
-            logger.info("Hypothesis evaluation completed successfully")
+            info_density = evaluator.evaluate_hypothesis(hypothesis, pdf_texts)
         except Exception as e:
-            logger.error(f"Error in evaluate_hypothesis: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Failed to evaluate hypothesis: {str(e)}")
-        
-        # Calculate complexity score
-        logger.info("Calculating complexity score...")
+    
+       
         try:
             complexity_score = calculate_complexity_score(hypothesis)
-            logger.info(f"Complexity score calculated: {complexity_score}")
         except Exception as e:
-            logger.error(f"Error in calculate_complexity_score: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Failed to calculate complexity score: {str(e)}")
         
-        # Convert to dictionary
+        
         try:
             evaluation_dict = asdict(info_density)
-            logger.info("Evaluation dictionary created successfully")
         except Exception as e:
-            logger.error(f"Error converting info_density to dict: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            # Fallback response
             evaluation_dict = {"overall_quality": 0, "error": "Failed to process evaluation"}
         
-        # Prepare response
         response_data = {
             "hypothesis": hypothesis,
             "Complexity_Score": complexity_score,

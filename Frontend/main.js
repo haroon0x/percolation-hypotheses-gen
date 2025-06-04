@@ -279,7 +279,7 @@
     const files = Array.from(e.target.files);
     
     if (files.length > 0) {
-        const file = files[0]; // Take only the first file
+        const file = files[0]; 
         state.uploadedFile = file; // Store the actual file object
         
         // Update display without uploading to server yet
@@ -312,13 +312,11 @@
     }
 }
 
-        // Update file upload display
         function updateFileUploadDisplay() {
             elements.uploadedFiles.innerHTML = '';
             state.uploadedFiles.forEach(file => addFileToDisplay(file));
         }
 
-        // Format file size
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
@@ -327,7 +325,7 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        // Generate hypothesis
+
         async function generateHypothesis() {
             if (state.isLoading) return;
  
@@ -344,7 +342,6 @@
         return;
     }
     
-    // Additional file validation
     if (state.uploadedFile.size > 10 * 1024 * 1024) { // 10MB limit
         alert('File size must be less than 10MB.');
         return;
@@ -445,14 +442,14 @@
             elements.citationsSection.style.display = result.citationCount > 0 ? 'block' : 'none';
             
             elements.citationsList.innerHTML = '';
-            hypothesis.citations.forEach(citation => {
+            result.citations.forEach(citation => {
                 const citationDiv = document.createElement('div');
                 citationDiv.className = 'citation-item';
                 citationDiv.textContent = citation;
                 elements.citationsList.appendChild(citationDiv);
             });
             
-            styleMetadataValues(hypothesis);
+            styleMetadataValues(result);
         }
 
         async function validateHypothesis(hypothesis) {
@@ -473,7 +470,7 @@
             }
             }
 
-        function styleMetadataValues(hypothesis) {
+        function styleMetadataValues(result) {
             const density = result.info_density.overall_quality;
             if (density >= 60) {
                 elements.densityValue.style.color = 'var(--accent-green)';
@@ -484,16 +481,16 @@
             }
             
 
-            if (hypothesis.validationStatus === 'Highly Supported') {
+            if (result.validationStatus === 'Highly Supported') {
                 elements.validationStatus.style.color = 'var(--accent-green)';
-            } else if (hypothesis.validationStatus === 'Partially Supported') {
+            } else if (result.validationStatus === 'Partially Supported') {
                 elements.validationStatus.style.color = 'var(--accent-yellow)';
             } else {
                 elements.validationStatus.style.color = 'var(--accent-red)';
             }
         }
 
-        // Update chart with new data point
+       
         function updateChart(result) {
     if (!state.chart) {
         console.error('Chart not initialized');
