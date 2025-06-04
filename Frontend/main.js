@@ -442,13 +442,14 @@
             elements.citationsSection.style.display = result.citationCount > 0 ? 'block' : 'none';
             
             elements.citationsList.innerHTML = '';
-            result.citations.forEach(citation => {
+            /*
+            hypothesis.citations.forEach(citation => {
                 const citationDiv = document.createElement('div');
                 citationDiv.className = 'citation-item';
                 citationDiv.textContent = citation;
                 elements.citationsList.appendChild(citationDiv);
             });
-            
+            */
             styleMetadataValues(result);
         }
 
