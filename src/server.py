@@ -13,6 +13,14 @@ import traceback
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+     allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class Hypothesis(BaseModel):
     Phenomenon : str
     Complexity : int
@@ -135,11 +143,3 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> List[str]:
             page_texts.append(text.strip())
     
     return page_texts
-
-app.add_middleware(
-    CORSMiddleware,
-     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
