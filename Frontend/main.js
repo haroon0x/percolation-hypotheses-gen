@@ -231,7 +231,7 @@ function updatePercolationLine(percolationPoint) {
             const densityDrop = maxDensity - sortedData[i].density;
             const dropPercentage = (densityDrop / maxDensity) * 100;
             
-            if (dropPercentage >= 20) { 
+            if (dropPercentage >= 28) { 
                 percolationPoint = sortedData[i].complexity;
                 significantDrop = true;
                 break;
