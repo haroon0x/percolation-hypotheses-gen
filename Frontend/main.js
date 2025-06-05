@@ -389,6 +389,9 @@
             
                 const result = await response.json(); 
                 console.log('Success response:', result);
+                console.log('Complexity_Score value:', result.Complexity_Score);
+        console.log('Complexity_Score type:', typeof result.Complexity_Score);
+        console.log('Is it exactly 0?', result.Complexity_Score === 0);
                 displayHypothesis(result); 
                 updateChart(result);
             
@@ -423,7 +426,7 @@
 
        
 
-        function displayHypothesis(result) {
+        function displayHypothesis(result) {    
               if (!result) {
         console.error('No result provided to displayHypothesis');
         return;
@@ -434,7 +437,7 @@
             elements.hypothesisText.textContent = result.hypothesis || 'No hypothesis generated';
             const info_density = result.info_density?.overall_quality ?? 0;
              elements.densityValue.textContent = `${(info_density *100).toFixed(3)}%`;
-    elements.complexityScore.textContent = result.Complexity_Score?.toFixed(3) ?? 0;
+    elements.complexityScore.textContent = (result.Complexity_Score ?? 0).toFixed(1);
     elements.validationStatus.textContent = result.validationStatus || 'Pending';
        const citations = result.citations || [];
     elements.citationCount.textContent = citations.length;

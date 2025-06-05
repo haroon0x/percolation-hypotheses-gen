@@ -76,7 +76,10 @@ async def get_hypothesis(
     
        
         try:
-            complexity_score = calculate_complexity_score(hypothesis)
+            hypothesis= hypothesis.strip()
+            complexity_score = calculate_complexity_score(hypothesis_text=hypothesis)
+            if complexity_score == 0:
+                print("WARNING: Complexity score is 0!")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to calculate complexity score: {str(e)}")
         

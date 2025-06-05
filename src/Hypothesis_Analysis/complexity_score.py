@@ -5,8 +5,10 @@ import numpy as np
 
 try:
     nltk.data.find('tokenizers/punkt')
+    nltk.data.find('tokenizers/punkt_tab')
 except LookupError:
     nltk.download('punkt', quiet=True)
+    nltk.download('punkt_tab', quiet=True)
 
 def calculate_complexity_score(hypothesis_text: str) -> float:
     """
@@ -18,56 +20,54 @@ def calculate_complexity_score(hypothesis_text: str) -> float:
     Returns:
     float: The calculated complexity score scaled to be roughly between 0 and 100.
     """
-    if not hypothesis_text or not hypothesis_text.strip():
-        return 0.0
+    if not hypothesis_text:
+        return False
 
-    # 1. Basic tokenization
     try:
-        words = word_tokenize(hypothesis_text.lower()) # Lowercase for consistency in lexical measures
+        words = word_tokenize(hypothesis_text.lower())
         num_words = len(words)
         sentences = sent_tokenize(hypothesis_text)
         num_sentences = len(sentences)
     except Exception as e:
-        # Handle potential errors during tokenization if text is very unusual
         print(f"Tokenization error: {e}")
         return 0.0 # Or a default low complexity score
-
+    if num_sentences == 0:
+        num_sentences = 1  
+    
     if num_words == 0 or num_sentences == 0:
         return 0.0
 
-    # --- Feature Extraction ---
-
-    # Feature 1: Average Sentence Length (ASL)
     avg_sent_length = num_words / num_sentences
-    # Define expected min/max for normalization (these are heuristics, can be tuned)
-    MIN_ASL = 5.0   # Very simple sentences
-    MAX_ASL = 36.0  # Very long, complex sentences for a hypothesis
+    MIN_ASL = 5.0   
+    MAX_ASL = 36.0  
 
-    # Feature 2: Flesch-Kincaid Grade Level (FK_GRADE)
-    # Higher grade level indicates more complexity.
-    fk_grade = textstat.flesch_kincaid_grade(hypothesis_text)
-    MIN_FK_GRADE = 0.0  # Early elementary
-    MAX_FK_GRADE = 20.0 # Post-graduate level
-
-    # Feature 3: Lexical Diversity (MTLD or MATTR)
-    # MTLD (Measure of Textual Lexical Diversity) is robust.
-    # For very short texts, MATTR might return None or raise error, handle this.
     try:
-        # window_size can be adjusted. Smaller windows are more sensitive to local variations.
+        fk_grade = textstat.flesch_kincaid_grade(hypothesis_text)
+    except:
+        fk_grade = 5.0
+    MIN_FK_GRADE = 0.0  
+    MAX_FK_GRADE = 20.0 
+
+
+    try:
         lex_diversity_score = textstat.mattr(hypothesis_text, window_size=25)
         if lex_diversity_score is None:
-            lex_diversity_score = 0.3 # Assign a low-ish diversity
+            lex_diversity_score = 0.3
     except: 
         lex_diversity_score = 0.3
 
     MIN_LEX_DIV = 0.2  # Low diversity
     MAX_LEX_DIV = 0.9  # High diversity 
 
-    # Feature 4: Average Syllables per Word (ASW) - Word Complexity
-    total_syllables = textstat.syllable_count(hypothesis_text)
+   
+    try:
+        total_syllables = textstat.syllable_count(hypothesis_text)
+    except:
+        total_syllables = estimate_syllables_accurate(hypothesis_text, num_words)
+
     avg_syllables_per_word = total_syllables / num_words if num_words > 0 else 0
-    MIN_ASW = 1.0  # e.g., "a", "is", "to"
-    MAX_ASW = 2.5  # Average for highly technical/polysyllabic text
+    MIN_ASW = 1.0  
+    MAX_ASW = 2.5  
 
     # --- Normalization (Min-Max to 0-1 scale) ---
     def normalize(value, min_val, max_val):
@@ -104,3 +104,29 @@ def calculate_complexity_score(hypothesis_text: str) -> float:
 
     final_complexity_score = complexity_score_0_1 * 100
     return round(final_complexity_score, 2)
+
+
+def estimate_syllables_accurate(text, num_words):
+    """More accurate syllable estimation based on vowel patterns"""
+    vowels = 'aeiouyAEIOUY'
+    syllable_count = 0
+    
+    for word in word_tokenize(text.lower()):
+        word_syllables = 0
+        prev_was_vowel = False
+        
+        for char in word:
+            is_vowel = char in vowels
+            if is_vowel and not prev_was_vowel:
+                word_syllables += 1
+            prev_was_vowel = is_vowel
+        
+        # Handle silent 'e' and minimum syllable rules
+        if word.endswith('e') and word_syllables > 1:
+            word_syllables -= 1
+        if word_syllables == 0:
+            word_syllables = 1
+            
+        syllable_count += word_syllables
+    
+    return syllable_count
