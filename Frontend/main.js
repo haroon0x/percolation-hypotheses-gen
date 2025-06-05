@@ -427,29 +427,32 @@
               if (!result) {
         console.error('No result provided to displayHypothesis');
         return;
-    }
+    }         
+    console.log('Displaying hypothesis with result:', result);
             state.currentHypothesis = result;
             
             elements.hypothesisText.textContent = result.hypothesis || 'No hypothesis generated';
-            
-             elements.densityValue.textContent = `${result.info_density?.overall_quality ?? 0}%`;
-    elements.complexityScore.textContent = result.Complexity_Score ?? 0;
+            const info_density = result.info_density?.overall_quality ?? 0;
+             elements.densityValue.textContent = `${(info_density *100).toFixed(3)}%`;
+    elements.complexityScore.textContent = result.Complexity_Score?.toFixed(3) ?? 0;
     elements.validationStatus.textContent = result.validationStatus || 'Pending';
-    elements.citationCount.textContent = result.citationCount ?? 0;
+       const citations = result.citations || [];
+    elements.citationCount.textContent = citations.length;
     
             
             elements.hypothesisMetadata.style.display = 'grid';
             elements.citationsSection.style.display = result.citationCount > 0 ? 'block' : 'none';
             
             elements.citationsList.innerHTML = '';
-            /*
-            hypothesis.citations.forEach(citation => {
-                const citationDiv = document.createElement('div');
-                citationDiv.className = 'citation-item';
-                citationDiv.textContent = citation;
-                elements.citationsList.appendChild(citationDiv);
-            });
-            */
+               if (citations.length > 0) {
+        elements.citationsSection.style.display = 'block';
+        citations.forEach(citation => {
+            const citationDiv = document.createElement('div');
+            citationDiv.className = 'citation-item';
+            citationDiv.textContent = citation;
+            elements.citationsList.appendChild(citationDiv);
+        });
+    }
             styleMetadataValues(result);
         }
 
@@ -472,7 +475,7 @@
             }
 
         function styleMetadataValues(result) {
-            const density = result.info_density.overall_quality;
+            const density = (result.info_density?.overall_quality?? 0 ) * 100;
             if (density >= 60) {
                 elements.densityValue.style.color = 'var(--accent-green)';
             } else if (density >= 30) {
@@ -481,15 +484,15 @@
                 elements.densityValue.style.color = 'var(--accent-red)';
             }
             
-
-            if (result.validationStatus === 'Highly Supported') {
-                elements.validationStatus.style.color = 'var(--accent-green)';
-            } else if (result.validationStatus === 'Partially Supported') {
-                elements.validationStatus.style.color = 'var(--accent-yellow)';
-            } else {
-                elements.validationStatus.style.color = 'var(--accent-red)';
-            }
-        }
+             const validationStatus = result.validationStatus || 'Pending';
+    if (validationStatus === 'Highly Supported') {
+        elements.validationStatus.style.color = 'var(--accent-green)';
+    } else if (validationStatus === 'Partially Supported') {
+        elements.validationStatus.style.color = 'var(--accent-yellow)';
+    } else {
+        elements.validationStatus.style.color = 'var(--accent-red)';
+    }
+}
 
        
         function updateChart(result) {
@@ -497,10 +500,11 @@
         console.error('Chart not initialized');
         return;
     }
-    
+    const complexityScore = result.Complexity_Score ?? 0;
+     const info_density = (result.info_density?.overall_quality ?? 0) * 100; 
     state.chartData.push({
-        x: result.Complexity_Score,
-        y: result.info_density.overall_quality
+        x: complexityScore,
+        y: info_density
 
     });
     
