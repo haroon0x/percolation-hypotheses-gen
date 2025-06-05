@@ -153,8 +153,8 @@
                 scales: {
                     x: {
                         type: 'linear',
-                        min: 0,            
-                        max: 100,
+                        min: 1,            
+                        max: 10,
                         title: {
                             display: true,
                             text: 'Complexity Level',
@@ -550,7 +550,9 @@ function updatePercolationLine(percolationPoint) {
         console.error('Chart not initialized');
         return;
     }
-    const complexityScore = result.Complexity_Score ?? 0;
+    //const complexityScore = result.Complexity_Score ?? 0; initial plan
+    const complexityScore = state.complexity;
+    
      const info_density = (result.info_density?.overall_quality ?? 0) * 100; 
     state.dataPoints.push({
         complexity: complexityScore,
@@ -569,8 +571,11 @@ function updatePercolationLine(percolationPoint) {
     }
     
     try {
-        state.chart.data.datasets[0].data = [...state.chartData];
+        const sortedChartData = [...state.chartData].sort((a, b) => a.x - b.x);
+        
+        state.chart.data.datasets[0].data = sortedChartData;
         state.chart.update();
+
         detectPercolationPoint();
         console.log('Chart updated with new data point');
     } catch (error) {
