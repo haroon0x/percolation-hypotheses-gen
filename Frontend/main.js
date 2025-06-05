@@ -28,19 +28,22 @@
 
         // Global state management
         const state = {
-            complexity: 50,
+            complexity: 5,
             currentHypothesis: null,
             chartData: [],
-            percolationPoint: 75,
+            percolationPoint: null,
             isLoading: false,
             uploadedFiles: [],
             topic: '',
             domain: 'general',
             chart: null,
-            uploadedFile: null
+            uploadedFile: null,
+            percolationDetected: false,
+            percolationThreshold: null,
+            dataPoints: [],
         };
 
-        // DOM elements cache
+     
         const elements = {
             complexitySlider: document.getElementById('complexitySlider'),
             complexityValue: document.getElementById('complexityValue'),
@@ -70,7 +73,6 @@
        function initializeApp() {
             console.log('Initializing app...');
 
-            // Check if all required elements exist
             const requiredElements = ['complexitySlider', 'generateBtn', 'densityChart'];
             for (const elementId of requiredElements) {
                 const element = document.getElementById(elementId);
@@ -122,16 +124,6 @@
                         pointBackgroundColor: 'rgba(34, 197, 94, 1)',
                         pointBorderColor: '#ffffff',
                         pointBorderWidth: 2
-                    },
-                    {
-                        label: 'Percolation Point',
-                        data: [{ x: 75, y: 0 }, { x: 75, y: 100 }],
-                        borderColor: 'rgba(239, 68, 68, 1)',  // Remove transparency - make it solid red
-                        borderWidth: 4,                        // Make it thicker
-                        borderDash: [8, 4],                   // Bigger dash pattern
-                        pointRadius: 0,
-                        fill: false,
-                        tension: 0                            // Add this for straight line
                     }
                 ]
             },
@@ -205,8 +197,55 @@
         console.error('Error initializing chart:', error);
     }
 }
-
-       // Event listeners
+function updatePercolationLine(percolationPoint) {
+    if (!state.chart) return;
+    
+    // Update the percolation line position
+    state.chart.data.datasets[1].data = [
+        { x: percolationPoint, y: 0 }, 
+        { x: percolationPoint, y: 100 }
+    ];
+    
+    // Make it visible
+    state.chart.data.datasets[1].hidden = false;
+    state.chart.update();
+}
+    function   detectPercolationPoint() {
+    if (state.dataPoints.length < 5) return; 
+ 
+    const sortedData = [...state.dataPoints].sort((a, b) => a.complexity - b.complexity);
+    
+    let maxDensity = 0;
+    let peakComplexity = 0;
+    let significantDrop = false;
+    let percolationPoint = null;
+    for (let i = 0; i < sortedData.length; i++) {
+        if (sortedData[i].density > maxDensity) {
+            maxDensity = sortedData[i].density;
+            peakComplexity = sortedData[i].complexity;
+        }
+    }
+    
+    for (let i = 0; i < sortedData.length; i++) {
+        if (sortedData[i].complexity > peakComplexity) {
+            const densityDrop = maxDensity - sortedData[i].density;
+            const dropPercentage = (densityDrop / maxDensity) * 100;
+            
+            if (dropPercentage >= 20) { 
+                percolationPoint = sortedData[i].complexity;
+                significantDrop = true;
+                break;
+            }
+        }
+    }
+    
+    if (significantDrop && percolationPoint) {
+        state.percolationDetected = true;
+        state.percolationThreshold = percolationPoint;
+        updatePercolationLine(percolationPoint);
+        console.log(`Percolation point detected at complexity: ${percolationPoint}`);
+    }
+}
         function bindEventListeners() {
             elements.complexitySlider.addEventListener('input', (e) => {
                 state.complexity = parseInt(e.target.value);
@@ -215,14 +254,13 @@
                 console.log('Complexity changed to:', state.complexity);
             });
 
-            // Generate button
+   
             elements.generateBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 console.log('Generate button clicked');
                 generateHypothesis();
             });
 
-            // Topic and domain inputs
             elements.topicInput.addEventListener('input', (e) => {
                 state.topic = e.target.value;
                 updateStatus();
@@ -235,19 +273,19 @@
                 console.log('Domain changed to:', state.domain);
             });
 
-            // File upload
+     
             elements.literatureFile.addEventListener('change', handleFileUpload);
     
         }
-        // Update complexity display
+      
         function updateComplexityDisplay() {
             elements.complexityValue.textContent = state.complexity;
             
             let label, color;
-            if (state.complexity <= 30) {
+            if (state.complexity <= 3) {
                 label = 'Simple';
                 color = 'var(--accent-green)';
-            } else if (state.complexity <= 70) {
+            } else if (state.complexity <= 7) {
                 label = 'Moderate';
                 color = 'var(--accent-yellow)';
             } else {
@@ -259,20 +297,30 @@
             elements.complexityBadge.style.color = color;
         }
 
-        // Update percolation indicator
         function updatePercolationIndicator() {
             const indicator = elements.percolationIndicator;
             
-            if (state.complexity <= 60) {
-                indicator.className = 'percolation-indicator safe';
-                indicator.innerHTML = '<strong>✅ Status:</strong> Safe Zone - High Information Density Expected';
-            } else if (state.complexity <= 80) {
-                indicator.className = 'percolation-indicator warning';
-                indicator.innerHTML = '<strong>⚠️ Status:</strong> Approaching Percolation Point - Density May Decline';
-            } else {
-                indicator.className = 'percolation-indicator danger';
-                indicator.innerHTML = '<strong>❌ Status:</strong> Beyond Percolation Point - Low Information Density';
-            }
+            if (state.percolationDetected) {
+        if (state.complexity >= state.percolationThreshold) {
+            indicator.className = 'percolation-indicator danger';
+            indicator.innerHTML = `<strong>❌ Status:</strong> Beyond Detected Percolation Point (${state.percolationThreshold.toFixed(1)}) - Low Information Density`;
+        } else {
+            indicator.className = 'percolation-indicator warning';
+            indicator.innerHTML = `<strong>⚠️ Status:</strong> Approaching Detected Percolation Point (${state.percolationThreshold.toFixed(1)})`;
+        }
+    } else {
+        // Original logic when no percolation detected yet
+        if (state.complexity <= 6) {
+            indicator.className = 'percolation-indicator safe';
+            indicator.innerHTML = '<strong>✅ Status:</strong> Safe Zone - Collecting data to detect percolation point';
+        } else if (state.complexity <= 8) {
+            indicator.className = 'percolation-indicator warning';
+            indicator.innerHTML = '<strong>⚠️ Status:</strong> High complexity - Monitor for percolation effects';
+        } else {
+            indicator.className = 'percolation-indicator danger';
+            indicator.innerHTML = '<strong>❌ Status:</strong> Very high complexity - Potential percolation risk';
+        }
+    }
         }
 
         async function handleFileUpload(e) {
@@ -289,7 +337,6 @@
     }
 }
 
-        // Add file to display
         function addFileToDisplay(file) {
     const fileDiv = document.createElement('div');
     fileDiv.className = 'uploaded-file';
@@ -300,7 +347,7 @@
     elements.uploadedFiles.appendChild(fileDiv);
 }
 
-        // Remove file
+ 
        function removeFile(fileName) {
     state.uploadedFiles = state.uploadedFiles.filter(f => f.name !== fileName);
     state.uploadedFile = null; // CLEAR THE ACTUAL FILE TOO
@@ -505,6 +552,10 @@
     }
     const complexityScore = result.Complexity_Score ?? 0;
      const info_density = (result.info_density?.overall_quality ?? 0) * 100; 
+    state.dataPoints.push({
+        complexity: complexityScore,
+        density: info_density
+    });
     state.chartData.push({
         x: complexityScore,
         y: info_density
@@ -514,11 +565,13 @@
 
     if (state.chartData.length > 20) {
         state.chartData = state.chartData.slice(-20);
+         state.dataPoints = state.dataPoints.slice(-20);
     }
     
     try {
         state.chart.data.datasets[0].data = [...state.chartData];
         state.chart.update();
+        detectPercolationPoint();
         console.log('Chart updated with new data point');
     } catch (error) {
         console.error('Error updating chart:', error);
