@@ -1,5 +1,6 @@
-    const API_CONFIG = {
-            baseURL: 'https://percolation-hypotheses-gen.onrender.com', // Change to your backend URL
+
+const API_CONFIG = {
+            baseURL: 'https://percolation-hypotheses-gen.onrender.com', 
             endpoints: {
                 generateHypothesis: '/generate-hypothesis',
                 uploadFile: '/upload-literature',
@@ -7,7 +8,8 @@
             },
             timeout: 30000
         };
-        async function apiCall(endpoint, options = {}) {
+    
+async function apiCall(endpoint, options = {}) {
             try {
                 const response = await fetch(`${API_CONFIG.baseURL}${endpoint}`, {
                     timeout: API_CONFIG.timeout,
@@ -26,8 +28,7 @@
             }
         }
 
-        // Global state management
-        const state = {
+const state = {
             complexity: 5,
             currentHypothesis: null,
             chartData: [],
@@ -44,7 +45,7 @@
         };
 
      
-        const elements = {
+const elements = {
             complexitySlider: document.getElementById('complexitySlider'),
             complexityValue: document.getElementById('complexityValue'),
             complexityBadge: document.getElementById('complexityBadge'),
@@ -67,10 +68,10 @@
             complexityScore: document.getElementById('complexityScore'),
             validationStatus: document.getElementById('validationStatus'),
             citationCount: document.getElementById('citationCount'),
-            citationsList: document.getElementById('citationsList')
+            citationsList: document.getElementById('citationsList'),
         };
 
-       function initializeApp() {
+function initializeApp() {
             console.log('Initializing app...');
 
             const requiredElements = ['complexitySlider', 'generateBtn', 'densityChart'];
@@ -90,7 +91,8 @@
             console.log('App initialized successfully');   
 
             }
-    function initializeChart() {
+
+function initializeChart() {
 
         
     const canvas = document.getElementById('densityChart');
@@ -197,6 +199,7 @@
         console.error('Error initializing chart:', error);
     }
 }
+
 function updatePercolationLine(percolationPoint) {
     if (!state.chart) return;
     
@@ -210,7 +213,8 @@ function updatePercolationLine(percolationPoint) {
     state.chart.data.datasets[1].hidden = false;
     state.chart.update();
 }
-    function   detectPercolationPoint() {
+
+function   detectPercolationPoint() {
     if (state.dataPoints.length < 5) return; 
  
     const sortedData = [...state.dataPoints].sort((a, b) => a.complexity - b.complexity);
@@ -231,7 +235,7 @@ function updatePercolationLine(percolationPoint) {
             const densityDrop = maxDensity - sortedData[i].density;
             const dropPercentage = (densityDrop / maxDensity) * 100;
             
-            if (dropPercentage >= 28) { 
+            if (dropPercentage >= 20) { 
                 percolationPoint = sortedData[i].complexity;
                 significantDrop = true;
                 break;
@@ -246,7 +250,8 @@ function updatePercolationLine(percolationPoint) {
         console.log(`Percolation point detected at complexity: ${percolationPoint}`);
     }
 }
-        function bindEventListeners() {
+
+function bindEventListeners() {
             elements.complexitySlider.addEventListener('input', (e) => {
                 state.complexity = parseInt(e.target.value);
                 updateComplexityDisplay();
@@ -254,7 +259,7 @@ function updatePercolationLine(percolationPoint) {
                 console.log('Complexity changed to:', state.complexity);
             });
 
-   
+            elements.autoGenerateBtn.addEventListener('click', handleAutoGenerate);
             elements.generateBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 console.log('Generate button clicked');
@@ -278,7 +283,7 @@ function updatePercolationLine(percolationPoint) {
     
         }
       
-        function updateComplexityDisplay() {
+function updateComplexityDisplay() {
             elements.complexityValue.textContent = state.complexity;
             
             let label, color;
@@ -295,9 +300,9 @@ function updatePercolationLine(percolationPoint) {
             
             elements.complexityLabel.textContent = label;
             elements.complexityBadge.style.color = color;
-        }
+}
 
-        function updatePercolationIndicator() {
+function updatePercolationIndicator() {
             const indicator = elements.percolationIndicator;
             
             if (state.percolationDetected) {
@@ -323,7 +328,7 @@ function updatePercolationLine(percolationPoint) {
     }
         }
 
-        async function handleFileUpload(e) {
+async function handleFileUpload(e) {
     const files = Array.from(e.target.files);
     
     if (files.length > 0) {
@@ -337,7 +342,7 @@ function updatePercolationLine(percolationPoint) {
     }
 }
 
-        function addFileToDisplay(file) {
+function addFileToDisplay(file) {
     const fileDiv = document.createElement('div');
     fileDiv.className = 'uploaded-file';
     fileDiv.innerHTML = `
@@ -348,7 +353,7 @@ function updatePercolationLine(percolationPoint) {
 }
 
  
-       function removeFile(fileName) {
+function removeFile(fileName) {
     state.uploadedFiles = state.uploadedFiles.filter(f => f.name !== fileName);
     state.uploadedFile = null; // CLEAR THE ACTUAL FILE TOO
     updateFileUploadDisplay();
@@ -359,12 +364,12 @@ function updatePercolationLine(percolationPoint) {
     }
 }
 
-        function updateFileUploadDisplay() {
+function updateFileUploadDisplay() {
             elements.uploadedFiles.innerHTML = '';
             state.uploadedFiles.forEach(file => addFileToDisplay(file));
         }
 
-        function formatFileSize(bytes) {
+function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
@@ -373,7 +378,7 @@ function updatePercolationLine(percolationPoint) {
         }
 
 
-        async function generateHypothesis() {
+async function generateHypothesis() {
             if (state.isLoading) return;
  
     const topic = elements.topicInput.value.trim();
@@ -462,18 +467,18 @@ function updatePercolationLine(percolationPoint) {
             }
             }       
 
-        function setLoadingState(loading) {
+function setLoadingState(loading) {
         state.isLoading = loading;
         elements.generateBtn.disabled = loading;
         elements.generateBtn.classList.toggle('loading', loading);
         elements.loadingSpinner.style.display = loading ? 'flex' : 'none';
         elements.statusText.textContent = loading ? 'Generating...' : 'Ready';
-            }
+        }
 
 
        
 
-        function displayHypothesis(result) {    
+function displayHypothesis(result) {    
               if (!result) {
         console.error('No result provided to displayHypothesis');
         return;
@@ -506,7 +511,7 @@ function updatePercolationLine(percolationPoint) {
             styleMetadataValues(result);
         }
 
-        async function validateHypothesis(hypothesis) {
+async function validateHypothesis(hypothesis) {
             try {
                 const validation = await apiCall(API_CONFIG.endpoints.validateHypothesis, {
                     method: 'POST',
@@ -524,7 +529,7 @@ function updatePercolationLine(percolationPoint) {
             }
             }
 
-        function styleMetadataValues(result) {
+function styleMetadataValues(result) {
             const density = (result.info_density?.overall_quality?? 0 ) * 100;
             if (density >= 60) {
                 elements.densityValue.style.color = 'var(--accent-green)';
@@ -545,7 +550,7 @@ function updatePercolationLine(percolationPoint) {
 }
 
        
-        function updateChart(result) {
+function updateChart(result) {
     if (!state.chart) {
         console.error('Chart not initialized');
         return;
@@ -583,28 +588,27 @@ function updatePercolationLine(percolationPoint) {
     }
 }
 
-        function updateStatus() {
+function updateStatus() {
             if (!state.isLoading) {
                 const hasRequirements = state.topic.length > 0;
                 elements.statusText.textContent = hasRequirements ? 'Ready' : 'Enter topic';
             }
         }
-
-        function updateTimestamp() {
+function updateTimestamp() {
             const now = new Date();
             elements.timestamp.textContent = now.toLocaleTimeString();
-        }
+ }
 
-        function updateUI() {
+function updateUI() {
             updateComplexityDisplay();
             updatePercolationIndicator();
             updateStatus();
             setInterval(updateTimestamp, 1000);
         }
 
-        function sleep(ms) {
+function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
-        }
+    }
 
         document.addEventListener('DOMContentLoaded', initializeApp);
         

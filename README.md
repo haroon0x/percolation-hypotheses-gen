@@ -30,17 +30,23 @@ The resulting scores are integrated using configurable weighting schemes tailore
 ```
 percolation-hypotheses-gen
 ├─ .python-version
-├─ app
-│  └─ app.py
+├─ docs
+│  ├─ architecture.md
+│  ├─ project_plan.md
+│  └─ user_guide.md
 ├─ Frontend
 │  ├─ index.html
 │  ├─ main.js
 │  └─ style.css
 ├─ LICENSE
 ├─ log
+├─ misc
+│  └─ demo.png
 ├─ pyproject.toml
 ├─ README.md
+├─ requirements.txt
 ├─ sample_pdfs
+│  ├─ 1706.03762v7.pdf
 │  ├─ 2505.09053v1.pdf
 │  ├─ 2505.09151v1.pdf
 │  └─ 2505.11309v1.pdf
@@ -54,7 +60,6 @@ percolation-hypotheses-gen
    │  └─ __init__.py
    ├─ Hypothesis_Analysis
    │  ├─ complexity_score.py
-   │  ├─ entity_labels.py
    │  ├─ information_density.py
    │  └─ information_density_.py
    ├─ literature_processing
@@ -65,11 +70,6 @@ percolation-hypotheses-gen
    │  ├─ model.py
    │  └─ __init__.py
    ├─ server.py
-   ├─ utils
-   │  ├─ data_utils.py
-   │  ├─ hypothesis_utils.py
-   │  ├─ visualization_utils.py
-   │  └─ __init__.py
    └─ __init__.py
 
 ```

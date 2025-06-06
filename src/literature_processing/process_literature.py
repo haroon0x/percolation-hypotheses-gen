@@ -5,14 +5,27 @@ import os
 from src.main import *
 import chromadb
 import time
+import re
+from collections import Counter
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import numpy as np
 
 try:
     nltk.data.find('tokenizers/punkt')
-except nltk.downloader.DownloadError:
+except LookupError:
     nltk.download('punkt', quiet=True)
 
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords', quiet=True)
 
-
+try:
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('wordnet', quiet=True)
 
 CHROMA_DB_PERSIST_PATH = "./chroma_data_store"
 try:
@@ -24,491 +37,511 @@ except Exception as e:
     print(f"Fatal Error: Could not initialize persistent ChromaDB client at '{CHROMA_DB_PERSIST_PATH}': {e}.")
     print("Attempting to use in-memory ChromaDB client as fallback (data will be lost on exit).")
     try:
-        CHROMA_CLIENT = chromadb.Client() # In-memory fallback
+        CHROMA_CLIENT = chromadb.Client()
         print("ChromaDB in-memory client initialized.")
     except Exception as e_mem:
         print(f"Fatal Error: Could not initialize in-memory ChromaDB client either: {e_mem}.")
         CHROMA_CLIENT = None
 
-
-
-def extract_text_pdf(pdf):
-    """
-    Returns
-        text extracted from pdf 
-    
-    """
+def extract_text_from_pdf(pdf_path):
     pdf_text = ""
     try:
-        reader = PdfReader(str(pdf))
-        for page in reader.pages:
-            page_txt = page.extract_text()
-            if page_txt:
-                pdf_text += page_txt +'\n'
+        reader = PdfReader(str(pdf_path))
+        for page_num, page in enumerate(reader.pages):
+            try:
+                page_text = page.extract_text()
+                if page_text and page_text.strip():
+                    cleaned_text = clean_extracted_text(page_text)
+                    if cleaned_text:
+                        pdf_text += cleaned_text + '\n'
+            except Exception as page_error:
+                print(f"Error extracting text from page {page_num + 1}: {str(page_error)}")
+                continue
     except Exception as e:
-        print(f"Error occured during PDF text extraction : {str(e)}")
+        print(f"Error occurred during PDF text extraction: {str(e)}")
         return ""
     except FileNotFoundError:
-        print(f"Error: PDF file not found at path: {pdf}")
+        print(f"Error: PDF file not found at path: {pdf_path}")
         return ""
     return pdf_text.strip()
 
+def clean_extracted_text(text):
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[^\w\s\.\,\;\:\!\?\-\(\)\[\]\{\}\"\'\/\@\#\$\%\^\&\*\+\=\<\>\|\\]', '', text)
+    text = re.sub(r'\.{3,}', '...', text)
+    text = re.sub(r'\n+', '\n', text)
+    text = text.strip()
+    return text
 
-def chunk_txt(
-    txt: str ,
-    chunk_size_chars: int = 1000,
-    chunk_overlap_chars: int = 100,
-    custom_separators : list[str] = None,
-    min_chunk_len : int = 10
-    ) -> list[str]:
+def create_text_chunks(
+    text: str,
+    chunk_size: int = 1000,
+    overlap_size: int = 200,
+    separators: list[str] = None,
+    min_chunk_length: int = 50
+) -> list[str]:
     
-    """
-    Chunks text using LangChain's RecursiveCharacterTextSplitter.
-
-    Args:
-        txt: The text content to be chunked.
-        chunk_size_chars: The target maximum size of each chunk in characters.
-        chunk_overlap_chars: The number of characters of overlap between consecutive chunks.
-        custom_separators: Optional list of custom separators to use. If None,
-                           defaults from RecursiveCharacterTextSplitter are used
-                           (typically ["\n\n", "\n", " ", ""]).
-
-    Returns:
-        A list of text chunks. Returns an empty list if the input text is empty
-        or if chunking results in no valid chunks.
-    
-    """
-    if not txt or not txt.strip():
+    if not text or not text.strip():
         return []
 
-    if custom_separators is None:
-        separators_to_use = ["\n\n", "\n", ". ", "? ", "! ", " ", "", "\u200B"]
-    else:
-        separators_to_use = custom_separators
+    if separators is None:
+        separators = ["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ", ""]
 
     text_splitter = RecursiveCharacterTextSplitter(
-        separators= separators_to_use,
-        chunk_size = chunk_size_chars,
-        chunk_overlap  = chunk_overlap_chars,
-        length_function = len,
+        separators=separators,
+        chunk_size=chunk_size,
+        chunk_overlap=overlap_size,
+        length_function=len,
         is_separator_regex=False
-    )    
-    chunks = text_splitter.split_text(text=txt)
+    )
     
-    return [chunk for chunk in chunks if chunk.strip() and len(chunk.strip()) > min_chunk_len]
+    chunks = text_splitter.split_text(text=text)
+    
+    valid_chunks = []
+    for chunk in chunks:
+        cleaned_chunk = chunk.strip()
+        if cleaned_chunk and len(cleaned_chunk) >= min_chunk_length:
+            cleaned_chunk = clean_extracted_text(cleaned_chunk)
+            if cleaned_chunk and len(cleaned_chunk) >= min_chunk_length:
+                valid_chunks.append(cleaned_chunk)
+    
+    return valid_chunks
 
-
-
-
-def get_embeddings(texts : list[str], task_type: str ) -> list[float]:
-    """
-    Generates embeddings for a list of text strings using the Gemini embeddings
-
-    Args:
-        texts: A list of strings, where each string is a text chunk.    
-        task_type: The task type for the embedding (e.g., "RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY").
-
-
-    Returns:
-        A list of lists of floats, where each inner list is an embedding
-        vector for the corresponding text chunk. Returns an empty list
-        if the model is not loaded, input is empty, or an error occurs.
-    """
-    if not texts or not isinstance(texts,list) or not all (isinstance(txt , str) for txt in texts):
+def generate_embeddings(texts: list[str], task_type: str) -> list[list[float]]:
+    if not texts or not isinstance(texts, list) or not all(isinstance(txt, str) for txt in texts):
         return []
     
-   
-    all_embeddings_values = []
-    batch_size = 100
-    delay_between_batches_seconds = 0.1
-    max_retries_per_batch = 3
-    initial_retry_delay_seconds = 2
-    embedding_model_name = "models/text-embedding-004"
+    all_embeddings = []
+    batch_size = 50
+    delay_between_batches = 0.2
+    max_retries = 5
+    base_retry_delay = 1
+    embedding_model = "models/text-embedding-004"
 
     for i in range(0, len(texts), batch_size):
         batch_texts = texts[i:i + batch_size]
-        current_batch_num = i // batch_size + 1
-        retries = 0
+        batch_number = i // batch_size + 1
+        retry_count = 0
         
-        while retries < max_retries_per_batch:
+        while retry_count < max_retries:
             try:
-                print(f"Processing embedding batch {current_batch_num} (attempt {retries + 1}/{max_retries_per_batch}) "
-                      f"for {len(batch_texts)} texts, model: {embedding_model_name}, task: {task_type}...")
+                print(f"Processing batch {batch_number} (attempt {retry_count + 1}/{max_retries}) "
+                      f"with {len(batch_texts)} texts...")
 
                 result = client.models.embed_content(
-                    model=embedding_model_name,
+                    model=embedding_model,
                     contents=batch_texts,
                     config=types.EmbedContentConfig(task_type=task_type)
                 )
 
                 if result and hasattr(result, 'embeddings') and result.embeddings:
-                    batch_processed_count = 0
-                    for emb_object in result.embeddings:
-                        if hasattr(emb_object, 'values') and emb_object.values:
-                            all_embeddings_values.append(emb_object.values)
-                            batch_processed_count += 1
+                    batch_embeddings = []
+                    for emb_obj in result.embeddings:
+                        if hasattr(emb_obj, 'values') and emb_obj.values:
+                            batch_embeddings.append(emb_obj.values)
                         else:
-                            print(f"Warning: ContentEmbedding object in batch {current_batch_num} missing 'values' or has empty values.")
+                            print(f"Warning: Invalid embedding object in batch {batch_number}")
                     
-                    if batch_processed_count != len(batch_texts):
-                        print(f"Warning: Mismatch in expected ({len(batch_texts)}) vs successfully processed ({batch_processed_count}) embeddings for batch {current_batch_num}.")
-                    
-                    print(f"Successfully processed batch {current_batch_num}.")
-                    break 
+                    if len(batch_embeddings) == len(batch_texts):
+                        all_embeddings.extend(batch_embeddings)
+                        print(f"Successfully processed batch {batch_number}")
+                        break
+                    else:
+                        print(f"Mismatch in batch {batch_number}: expected {len(batch_texts)}, got {len(batch_embeddings)}")
+                        if retry_count + 1 >= max_retries:
+                            return []
                 else:
-                    print(f"Warning: No 'embeddings' in result or embeddings list empty for batch {current_batch_num} (attempt {retries + 1}).")
-                    if retries + 1 >= max_retries_per_batch:
-                        print(f"Batch {current_batch_num} failed after max retries due to empty/invalid result.")
-                        return [] 
-                    retries +=1 
-                    time.sleep(initial_retry_delay_seconds * (2 ** retries)) 
+                    print(f"No embeddings returned for batch {batch_number}")
+                    if retry_count + 1 >= max_retries:
+                        return []
+                
+                retry_count += 1
+                time.sleep(base_retry_delay * (2 ** retry_count))
 
             except Exception as e:
-                error_message = str(e).lower()
-                if "resource has been exhausted" in error_message or "429" in error_message:
-                    print(f"Rate limit hit (429) on batch {current_batch_num}, attempt {retries + 1}. Retrying after delay...")
-                    retries += 1
-                    if retries >= max_retries_per_batch:
-                        print(f"Batch {current_batch_num} failed after max retries due to rate limits.")
-                        return [] 
-                    sleep_time = initial_retry_delay_seconds * (2 ** (retries -1)) 
-                    print(f"Waiting for {sleep_time:.2f} seconds...")
+                error_msg = str(e).lower()
+                if "429" in error_msg or "exhausted" in error_msg:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        print(f"Batch {batch_number} failed after max retries due to rate limits")
+                        return []
+                    sleep_time = base_retry_delay * (2 ** retry_count)
+                    print(f"Rate limit hit, waiting {sleep_time} seconds...")
                     time.sleep(sleep_time)
                 else:
-                    print(f"Non-retryable error occurred during embedding batch {current_batch_num}: {e}")
-                    return [] 
+                    print(f"Non-retryable error in batch {batch_number}: {e}")
+                    return []
 
-        if len(all_embeddings_values) != (i + len(batch_texts)) and retries >= max_retries_per_batch :
-             print(f"Batch {current_batch_num} ultimately failed to process all its texts after retries.")
-             return [] 
+        if i + batch_size < len(texts):
+            time.sleep(delay_between_batches)
 
-        if i + batch_size < len(texts): 
-            print(f"Waiting {delay_between_batches_seconds:.2f}s before next batch...")
-            time.sleep(delay_between_batches_seconds)
-
-    if len(all_embeddings_values) != len(texts):
-        print(f"Critical Warning: Final embedding count ({len(all_embeddings_values)}) "
-              f"does not match input text count ({len(texts)}).")
+    if len(all_embeddings) != len(texts):
+        print(f"Warning: Embedding count mismatch - expected {len(texts)}, got {len(all_embeddings)}")
         
-    return all_embeddings_values
+    return all_embeddings
 
-def store_chunks_in_chroma(
-    collection_name : str ,
-    chunks : list[str],
-    embeddings : list[float],
-    chroma_db_client
-    )-> chromadb.api.models.Collection.Collection | None:
-    """
-    Stores text chunks and their corresponding embeddings in a ChromaDB collection.
-    Deletes and recreates the collection if it already exists for a fresh start.
-
-    Args:
-        collection_name: The name for the ChromaDB collection.
-        chunks: A list of text strings (the document chunks).
-        embeddings: A list of lists of floats (the embedding vectors for the chunks).
-        chroma_db_client: The initialized ChromaDB client instance.
-
-    Returns:
-        The ChromaDB collection object if successful, otherwise None.
-    """
-    if not chroma_db_client:
-        print("Error: ChromaDB client not provided to store_chunks_in_chroma.")
+def store_in_chroma(
+    collection_name: str,
+    chunks: list[str],
+    embeddings: list[list[float]],
+    chroma_client
+) -> chromadb.api.models.Collection.Collection | None:
+    
+    if not chroma_client:
+        print("Error: ChromaDB client not provided")
         return None
+    
     if not collection_name or not collection_name.strip():
-        print("Error: Invalid collection name provided.")
+        print("Error: Invalid collection name")
         return None
+    
     if not chunks or not embeddings:
-        print(f"Warning for '{collection_name}': No chunks or embeddings provided to store.")
+        print(f"Warning: No chunks or embeddings to store in {collection_name}")
         return None
-    if len(chunks)!=len(embeddings):
-        print(f"For Collection - {collection_name} ': Mismatch - {len(chunks)} chunks vs {len(embeddings)} embeddings.")
+    
+    if len(chunks) != len(embeddings):
+        print(f"Error: Chunk count ({len(chunks)}) != embedding count ({len(embeddings)})")
+        return None
 
     try:
-
         try:
-            chroma_db_client.get_collection(name=chroma_db_client)
-            chroma_db_client.delete_collection(name=collection_name)
-            print(f"Info: Existing collection '{collection_name}' deleted for refresh.")
+            existing_collection = chroma_client.get_collection(name=collection_name)
+            chroma_client.delete_collection(name=collection_name)
+            print(f"Deleted existing collection: {collection_name}")
         except:
             pass
 
-        collection = chroma_db_client.create_collection(
-                name=collection_name,
-                metadata={"hnsw:space": "cosine"}  # Specifies the distance metric
-            )
-        ids = [f"{collection_name}_doc_{i}" for i in range(len(chunks))]
-
+        collection = chroma_client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+        
+        chunk_ids = [f"{collection_name}_chunk_{i}" for i in range(len(chunks))]
+        
         collection.add(
             embeddings=embeddings,
-            documents= chunks,
-            ids=ids
-            # addd metadata
+            documents=chunks,
+            ids=chunk_ids
         )
-        print(f"Info: Successfully added {len(chunks)} items to ChromaDB collection '{collection_name}'.")
+        
+        print(f"Successfully stored {len(chunks)} chunks in collection: {collection_name}")
         return collection
+        
     except Exception as e:
-        print(f"Error during ChromaDB operation for collection '{collection_name}': {str(e)}")
+        print(f"Error storing in ChromaDB collection {collection_name}: {str(e)}")
         return None
 
-from nltk.tokenize import sent_tokenize
+def extract_claims_from_hypothesis(hypothesis: str) -> list[str]:
+    sentences = sent_tokenize(hypothesis)
+    claims = []
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if len(sentence) < 20:
+            continue
+            
+        sub_claims = re.split(r'[,;](?=\s*[A-Z])', sentence)
+        for sub_claim in sub_claims:
+            sub_claim = sub_claim.strip()
+            if len(sub_claim) >= 20:
+                claims.append(sub_claim)
+    
+    return claims
 
-def calculate_information_density(
+def calculate_semantic_similarity(embedding1: list[float], embedding2: list[float]) -> float:
+    if not embedding1 or not embedding2:
+        return 0.0
+    
+    vec1 = np.array(embedding1)
+    vec2 = np.array(embedding2)
+    
+    dot_product = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+    
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    
+    return dot_product / (norm1 * norm2)
+
+def calculate_lexical_overlap(text1: str, text2: str) -> float:
+    try:
+        stop_words = set(stopwords.words('english'))
+        lemmatizer = WordNetLemmatizer()
+        
+        tokens1 = set(lemmatizer.lemmatize(word.lower()) for word in word_tokenize(text1) 
+                     if word.lower() not in stop_words and word.isalpha())
+        tokens2 = set(lemmatizer.lemmatize(word.lower()) for word in word_tokenize(text2) 
+                     if word.lower() not in stop_words and word.isalpha())
+        
+        if not tokens1 or not tokens2:
+            return 0.0
+        
+        intersection = len(tokens1.intersection(tokens2))
+        union = len(tokens1.union(tokens2))
+        
+        return intersection / union if union > 0 else 0.0
+    except:
+        return 0.0
+
+def compute_information_density(
     hypothesis_text: str,
     collection_name: str,
-    gemini_client_for_claims,
-    chroma_client_to_query,
-    similarity_threshold: float = 0.70,
-    top_n_results_per_claim: int = 3
+    gemini_client,
+    chroma_client,
+    similarity_threshold: float = 0.65,
+    lexical_threshold: float = 0.15,
+    top_results_per_claim: int = 5,
+    evidence_boost_factor: float = 1.2
 ) -> tuple[float, list[str], str]:
 
     if not hypothesis_text or not hypothesis_text.strip():
-        return 0.0, [], "Not Applicable (No Hypothesis Provided)"
-    if not collection_name:
-        return 0.0, [], "Error: Collection name not provided"
-    if not gemini_client_for_claims or not chroma_client_to_query:
-        return 0.0, [], "Error: Gemini or ChromaDB client not provided"
+        return 0.0, [], "No hypothesis provided"
+    
+    if not collection_name or not gemini_client or not chroma_client:
+        return 0.0, [], "Missing required parameters"
 
     try:
-        collection = chroma_client_to_query.get_collection(name=collection_name)
+        collection = chroma_client.get_collection(name=collection_name)
         if collection.count() == 0:
-             return 0.0, [], "Error: Literature collection is empty"
+            return 0.0, [], "Empty literature collection"
     except Exception as e:
-        return 0.0, [], f"Error: Cannot access collection '{collection_name}'. {str(e)}"
+        return 0.0, [], f"Cannot access collection: {str(e)}"
 
-    claims = sent_tokenize(hypothesis_text)
-    valid_claims = [c.strip() for c in claims if c.strip()]
-    if not valid_claims:
-        return 0.0, [], "Not Applicable (Hypothesis unparsable or empty)"
+    claims = extract_claims_from_hypothesis(hypothesis_text)
+    if not claims:
+        return 0.0, [], "No valid claims extracted"
 
-    supported_claims_count = 0
-    retrieved_citations_details = []
-    print(f"\n  Calculating Information Density for {len(valid_claims)} claim(s):")
+    supported_claims = 0
+    evidence_details = []
+    total_support_score = 0.0
+    
+    print(f"\nAnalyzing {len(claims)} claims for information density:")
 
-    for i, claim_text in enumerate(valid_claims):
-        print(f"    Processing Claim {i+1}/{len(valid_claims)}: \"{claim_text[:80]}...\"")
+    for claim_idx, claim in enumerate(claims):
+        print(f"  Processing claim {claim_idx + 1}: {claim[:60]}...")
         
-        claim_embeddings_list = get_embeddings( # Assumes get_embeddings uses global 'client'
-            texts=[claim_text],
-            task_type="RETRIEVAL_QUERY"
-        ) 
-        
-        if not claim_embeddings_list or not claim_embeddings_list[0]:
-            print(f"      Failed to generate embedding for claim {i+1}.")
+        claim_embeddings = generate_embeddings([claim], "RETRIEVAL_QUERY")
+        if not claim_embeddings or not claim_embeddings[0]:
+            print(f"    Failed to generate embedding for claim {claim_idx + 1}")
             continue
         
-        claim_embedding_vector = claim_embeddings_list[0]
+        claim_embedding = claim_embeddings[0]
 
         try:
             results = collection.query(
-                query_embeddings=[claim_embedding_vector],
-                n_results=top_n_results_per_claim,
+                query_embeddings=[claim_embedding],
+                n_results=top_results_per_claim,
                 include=['documents', 'distances']
             )
-        except Exception as e_query:
-            print(f"      Error querying ChromaDB for claim {i+1}: {str(e_query)}")
+        except Exception as e:
+            print(f"    Error querying for claim {claim_idx + 1}: {str(e)}")
             continue
 
-        claim_supported_this_round = False
+        best_support_score = 0.0
+        best_evidence = ""
+        
         if results and results.get('documents') and results['documents'][0]:
-            for doc_idx in range(len(results['documents'][0])):
+            for doc_idx, document in enumerate(results['documents'][0]):
                 distance = results['distances'][0][doc_idx]
-                similarity_score = 1.0 - distance 
-
-                if similarity_score >= similarity_threshold:
-                    supported_claims_count += 1
-                    evidence_snippet = results['documents'][0][doc_idx]
-                    citation_info = (
-                        f"Claim {i+1}: \"{claim_text}\"\n"
-                        f"  Evidence (Similarity: {similarity_score:.3f}): "
-                        f"\"{evidence_snippet[:250]}...\""
-                    )
-                    retrieved_citations_details.append(citation_info)
-                    claim_supported_this_round = True
-                    print(f"      Claim {i+1} SUPPORTED with similarity {similarity_score:.3f}.")
-                    break 
+                semantic_sim = 1.0 - distance
+                
+                lexical_sim = calculate_lexical_overlap(claim, document)
+                
+                combined_score = (semantic_sim * 0.7) + (lexical_sim * 0.3)
+                
+                if semantic_sim >= similarity_threshold and lexical_sim >= lexical_threshold:
+                    combined_score *= evidence_boost_factor
+                
+                if combined_score > best_support_score:
+                    best_support_score = combined_score
+                    best_evidence = document
+        
+        if best_support_score >= similarity_threshold:
+            supported_claims += 1
+            total_support_score += best_support_score
             
-            if not claim_supported_this_round:
-                 print(f"      Claim {i+1} NOT SUPPORTED by top results (threshold: {similarity_threshold}). Closest similarity: {1.0 - results['distances'][0][0]:.3f} (if results).")
+            evidence_info = (
+                f"Claim {claim_idx + 1}: {claim}\n"
+                f"Support Score: {best_support_score:.3f}\n"
+                f"Evidence: {best_evidence[:200]}..."
+            )
+            evidence_details.append(evidence_info)
+            print(f"    SUPPORTED with score {best_support_score:.3f}")
         else:
-            print(f"      Claim {i+1} NOT SUPPORTED (no relevant documents found).")
-            
-    info_density_score_percent = (supported_claims_count / len(valid_claims)) * 100 if valid_claims else 0.0
+            print(f"    NOT SUPPORTED (best score: {best_support_score:.3f})")
 
-    status = "Not Supported"
-    if info_density_score_percent >= 75: status = "Strongly Supported"
-    elif info_density_score_percent >= 50: status = "Moderately Supported"
-    elif info_density_score_percent > 10: status = "Partially Supported"
+    if len(claims) == 0:
+        density_score = 0.0
+    else:
+        base_density = (supported_claims / len(claims)) * 100
+        
+        if supported_claims > 0:
+            avg_support_strength = total_support_score / supported_claims
+            strength_multiplier = min(avg_support_strength, 1.0)
+            density_score = base_density * strength_multiplier
+        else:
+            density_score = 0.0
+
+    if density_score >= 80:
+        status = "Strongly Supported"
+    elif density_score >= 60:
+        status = "Well Supported"
+    elif density_score >= 40:
+        status = "Moderately Supported"
+    elif density_score >= 20:
+        status = "Partially Supported"
+    else:
+        status = "Not Supported"
     
-    return round(info_density_score_percent, 2), list(set(retrieved_citations_details)), status
+    return round(density_score, 2), evidence_details, status
 
-def process_pdf_and_store_embeddings(
-    pdf : str,
+def process_literature_document(
+    pdf_path: str,
     collection_name: str,
     chroma_client,
-    chunk_sz : int = 1000,
-    ):
-    """
-    Orchestrates the entire pipeline:
-    1. Extracts text from the PDF.
-    2. Chunks the extracted text.
-    3. Generates embeddings for the chunks using Gemini.
-    4. Stores the chunks and embeddings in ChromaDB.
-     Args:
-        pdf_file_path: Path to the PDF file.
-        collection_name: Name for the ChromaDB collection.
-        gemini_client_instance: Initialized Gemini API client.
-        chroma_client_instance: Initialized ChromaDB client.
-        chunk_sz: Target chunk size in characters.
-        
-    Returns:
-        A tuple: (success_status, message, number_of_items_stored_or_None).
-    """
+    chunk_size: int = 800,
+    overlap_size: int = 160
+) -> tuple[bool, str, int | None]:
+    
     if not chroma_client:
-        return False, "Error: ChromaDB client not provided.", None
+        return False, "ChromaDB client not provided", None
     
-    # 1. Extract text
-    print(f"\nProcessing PDF: '{pdf}' for collection: '{collection_name}'")
-    extracted_txt = extract_text_pdf(pdf=pdf)
-    if not extracted_txt:
-        return False, f"Failed to extract text from '{pdf}' or PDF is empty.", None
-    print(f"Successfully extracted text from '{pdf}' ({len(extracted_txt)} chars).")
-
-    # 2. Chunk Text
-    txt_chunks = chunk_txt(txt=extracted_txt,chunk_size_chars=chunk_sz,chunk_overlap_chars= 100)
-    if not txt_chunks:
-        return False, "Text chunking resulted in no usable chunks.", None
-    print(f"Text chunked into {len(txt_chunks)} parts.")
-
-     # 3. Generate Embeddings
-    chunk_embeddings = get_embeddings(texts = txt_chunks,task_type="RETRIEVAL_DOCUMENT")
-    if not chunk_embeddings or len(chunk_embeddings) != len(txt_chunks):
-        return False, "Embedding generation failed or mismatched with chunks.", None
-    print(f"Generated {len(chunk_embeddings)} embeddings.")
-
-    # 4. Store in ChromaDB
-    created_collection = store_chunks_in_chroma(collection_name, txt_chunks, chunk_embeddings, chroma_client)
-
-    if created_collection and created_collection.count() > 0:
-        num_stored = created_collection.count()
-        msg = f"Successfully processed '{pdf}'. {num_stored} items stored in collection '{collection_name}'."
-        print(msg)
-        return True, msg, num_stored
-    elif created_collection and created_collection.count() == 0:
-        msg = f"Processed '{pdf}', but 0 items were stored in ChromaDB. Check chunk content or size."
-        print(msg)
-        return False, msg, 0
+    print(f"\nProcessing literature document: {pdf_path}")
+    print(f"Target collection: {collection_name}")
+    
+    extracted_text = extract_text_from_pdf(pdf_path)
+    if not extracted_text:
+        return False, f"Failed to extract text from {pdf_path}", None
+    
+    print(f"Extracted {len(extracted_text)} characters from PDF")
+    
+    text_chunks = create_text_chunks(
+        text=extracted_text,
+        chunk_size=chunk_size,
+        overlap_size=overlap_size
+    )
+    
+    if not text_chunks:
+        return False, "No valid chunks created from text", None
+    
+    print(f"Created {len(text_chunks)} text chunks")
+    
+    chunk_embeddings = generate_embeddings(text_chunks, "RETRIEVAL_DOCUMENT")
+    if not chunk_embeddings or len(chunk_embeddings) != len(text_chunks):
+        return False, "Embedding generation failed", None
+    
+    print(f"Generated {len(chunk_embeddings)} embeddings")
+    
+    collection = store_in_chroma(collection_name, text_chunks, chunk_embeddings, chroma_client)
+    
+    if collection and collection.count() > 0:
+        stored_count = collection.count()
+        message = f"Successfully processed {pdf_path}. Stored {stored_count} chunks in {collection_name}"
+        print(message)
+        return True, message, stored_count
     else:
-        msg = f"Failed to store chunks and embeddings in ChromaDB for '{pdf}'."
-        print(msg)
-        return False, msg, None
-    
-
-
-
-
-
-
+        message = f"Failed to store chunks in ChromaDB for {pdf_path}"
+        print(message)
+        return False, message, None
 
 if __name__ == '__main__':
-    print("--- Comprehensive Test Suite: PDF Processing & Information Density ---")
+    print("=== Literature Processing and Information Density Analysis ===")
 
-    if 'CHROMA_CLIENT' not in globals() or CHROMA_CLIENT is None:
-        print("CRITICAL ERROR: CHROMA_CLIENT is not initialized. Aborting.")
-        exit()
-    else:
-        print(f"Using CHROMA_CLIENT: {type(CHROMA_CLIENT)}")
-
-    gemini_client_is_valid = False
-    if 'client' in globals() and client is not None:
-        try: 
-            if hasattr(client, 'models') and hasattr(client.models, 'embed_content'):
-                 print(f"Using Global Gemini client from src.main: {type(client)}")
-                 gemini_client_is_valid = True
-            else:
-                print("Warning: Global 'client' does not have expected 'models.embed_content' structure.")
-        except Exception as e_client_check:
-            print(f"Warning: Error checking global 'client': {e_client_check}")
+    if not CHROMA_CLIENT:
+        print("CRITICAL ERROR: ChromaDB client not initialized")
+        exit(1)
     
-    if not gemini_client_is_valid:
-        print("CRITICAL WARNING: Global Gemini 'client' is not confirmed valid for embeddings.")
+    print(f"Using ChromaDB client: {type(CHROMA_CLIENT)}")
 
-    print("\n[Test 1: Processing Sample PDF and Storing in ChromaDB]")
-    pdf_to_process_path = "sample_pdfs/2505.09053v1.pdf" 
-    main_test_collection_name = "density_test_collection_v1" 
+    if 'client' not in globals() or not client:
+        print("CRITICAL ERROR: Gemini client not available")
+        exit(1)
+    
+    print(f"Using Gemini client: {type(client)}")
 
-    if not os.path.exists(pdf_to_process_path):
-        print(f"  CRITICAL FAIL: Test PDF '{pdf_to_process_path}' not found. Cannot proceed with tests.")
-        exit()
+    print("\n[Phase 1: Processing Literature Document]")
+    test_pdf_path = "sample_pdfs/2505.09053v1.pdf"
+    test_collection_name = "literature_analysis_v2"
 
-    print(f"Attempting to process PDF: '{pdf_to_process_path}'")
-    success_proc, msg_proc, items_stored = process_pdf_and_store_embeddings(
-        pdf=pdf_to_process_path, 
-        collection_name=main_test_collection_name,
+    if not os.path.exists(test_pdf_path):
+        print(f"CRITICAL ERROR: Test PDF not found at {test_pdf_path}")
+        exit(1)
+
+    success, message, items_count = process_literature_document(
+        pdf_path=test_pdf_path,
+        collection_name=test_collection_name,
         chroma_client=CHROMA_CLIENT,
-        chunk_sz=700 
+        chunk_size=600,
+        overlap_size=120
     )
 
-    print(f"\n  --- PDF Processing Result for '{pdf_to_process_path}' ---")
-    print(f"  Success: {success_proc}")
-    print(f"  Message: {msg_proc}")
-    print(f"  Items Stored: {items_stored}")
+    print(f"\nProcessing Result:")
+    print(f"Success: {success}")
+    print(f"Message: {message}")
+    print(f"Items Stored: {items_count}")
 
-    if not success_proc or items_stored is None or items_stored == 0:
-        print("  FAIL: PDF Processing step failed or stored no items. Information Density test will be skipped.")
-    else:
-        print("  PASS: PDF Processing step successful.")
-        try:
-            verify_collection = CHROMA_CLIENT.get_collection(name=main_test_collection_name)
-            print(f"  Verification: Collection '{main_test_collection_name}' has {verify_collection.count()} items.")
-        except Exception as e_verify:
-            print(f"  Verification ERROR: Could not retrieve collection: {e_verify}")
+    if not success or not items_count:
+        print("Document processing failed - skipping density analysis")
+        exit(1)
 
-        print(f"\n[Test 2: Calculating Information Density against '{main_test_collection_name}']")
+    print(f"\n[Phase 2: Information Density Analysis]")
+    
+    test_hypotheses = [
+        {
+            "name": "Reaction-Diffusion Accuracy",
+            "text": "In chemical reaction-diffusion networks with small-molecule populations, the accuracy of moment-based approximations for dynamic evolution is contingent on specific relationships between reaction orders, Hill functions, and spatial distribution, where deviations from these relationships lead to increased errors in capturing system behavior."
+        },
+        {
+            "name": "Spatial Pattern Formation",
+            "text": "In spatially distributed biochemical networks with small-molecule populations, the emergence of non-local correlations between molecular species, mediated by reaction-diffusion processes and modulated by Hill-type regulatory functions, can lead to the formation of self-organized, dynamically stable spatial patterns that encode and propagate epigenetic information across cellular compartments."
+        },
+        {
+            "name": "Irrelevant Hypothesis",
+            "text": "The study of astrophysics is the primary focus of humanity and will revolutionize our understanding of quantum mechanics in biological systems."
+        },
+        {
+            "name": "Thermodynamic Framework",
+            "text": "By integrating a non-equilibrium thermodynamic framework with chemical reaction-diffusion networks, the emergence of self-organized criticality in intracellular signaling pathways, specifically those governed by Hill functions, is driven by the system's tendency to maximize entropy production while maintaining structural stability."
+        },
+        {
+            "name": "Concentration Effects",
+            "text": "In chemical reaction-diffusion networks, increasing the concentration of reactants will increase the rate of product formation until a saturation point is reached due to limited diffusion and enzyme kinetics."
+        }
+    ]
+    
+    analysis_threshold = 0.60
+    
+    for idx, hypothesis_data in enumerate(test_hypotheses):
+        hyp_name = hypothesis_data["name"]
+        hyp_text = hypothesis_data["text"]
         
-        sample_hypotheses_for_density_test = [
-            {
-                "text": "In chemical reaction-diffusion networks with small-molecule populations, the accuracy of moment-based approximations for dynamic evolution is contingent on specific relationships between reaction orders, Hill functions, and spatial distribution, where deviations from these relationships lead to increased errors in capturing system behavior.",
-            },
-            {
-                "text": " In spatially distributed biochemical networks with small-molecule populations, the emergence of non-local correlations between molecular species, mediated by reaction-diffusion processes and modulated by Hill-type regulatory functions, can lead to the formation of self-organized, dynamically stable spatial patterns that encode and propagate epigenetic information across cellular compartments, influencing long-term cellular fate decisions.",
-            },
-            {
-                "text": "The study of astrophysics is the primary focus of humanity", 
-            },
-            {
-                "text": " By integrating a non-equilibrium thermodynamic framework with chemical reaction-diffusion networks, we hypothesize that the emergence of self-organized criticality in intracellular signaling pathways, specifically those governed by Hill functions, is driven by the system's tendency to maximize entropy production while maintaining structural stability, leading to scale-free dynamics and enhanced sensitivity to perturbations, which can be mathematically described by extending the moment-based approach to incorporate fluctuation theorems and irreversible thermodynamics.",
-            },
-            {
-                "text": " In chemical reaction-diffusion networks, increasing the concentration of reactants will increase the rate of product formation until a saturation point is reached due to limited diffusion."
-            }
-        ]
+        print(f"\n--- Analyzing Hypothesis {idx + 1}: {hyp_name} ---")
         
-        test_similarity_threshold_for_density = 0.60 
+        density, evidence, status = compute_information_density(
+            hypothesis_text=hyp_text,
+            collection_name=test_collection_name,
+            gemini_client=client,
+            chroma_client=CHROMA_CLIENT,
+            similarity_threshold=analysis_threshold,
+            lexical_threshold=0.12,
+            top_results_per_claim=4
+        )
+        
+        print(f"\nResults for '{hyp_name}':")
+        print(f"Information Density: {density}%")
+        print(f"Support Status: {status}")
+        
+        if evidence:
+            print(f"Evidence Found ({len(evidence)} pieces):")
+            for ev_idx, evidence_item in enumerate(evidence):
+                print(f"\n  Evidence {ev_idx + 1}:")
+                for line in evidence_item.split('\n'):
+                    if line.strip():
+                        print(f"    {line}")
+        else:
+            print("No supporting evidence found above threshold")
+        
+        print("=" * 60)
 
-        for idx, hyp_data in enumerate(sample_hypotheses_for_density_test):
-            hypothesis = hyp_data["text"]
-            print(f"\n  Testing Hypothesis {idx + 1}: \"{hypothesis}\"")
-            
-            density, citations, prov_status = calculate_information_density(
-                hypothesis_text=hypothesis,
-                collection_name=main_test_collection_name,
-                gemini_client_for_claims=client, 
-                chroma_client_to_query=CHROMA_CLIENT,
-                similarity_threshold=test_similarity_threshold_for_density,
-                top_n_results_per_claim=2 
-            )
-            
-            print(f"    -----------------------------------------------------")
-            print(f"    Hypothesis: \"{hypothesis}\"")
-            print(f"    Information Density: {density}%")
-            print(f"    Provability Status: {prov_status}")
-            if citations:
-                print(f"    Citations Found ({len(citations)}):")
-                for cit_idx, citation_detail in enumerate(citations):
-                    indented_citation = citation_detail.replace('\n', '\n          ') # Replace newline with newline + indent
-                    print(f"      Citation {cit_idx+1}:\n          {indented_citation}")
-            else:
-                print("    No citations found meeting the threshold.")
-            print(f"    -----------------------------------------------------")
-
-    print("\n--- Comprehensive Test Suite Complete ---")
+    print("\n=== Analysis Complete ===")

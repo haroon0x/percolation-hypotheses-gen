@@ -379,10 +379,8 @@ if __name__ == "__main__":
     ]
     
     hypothesis = """
-    If neural networks implement multi-head attention mechanisms with at least 8 heads,
-    then they will demonstrate significantly improved performance on sequence-to-sequence
-    tasks compared to models without attention, as measured by BLEU scores exceeding
-    baseline performance by 15% or more.
+   Hypothesis generated: By integrating the principles of locality, additivity, and positivity within a diffusion model framework, stimulus-specific neural information decomposition can reveal hierarchical encoding strategies in sensory systems, where lower-level features (e.g., edges) are initially processed independently, and higher-level representations emerge through the synergistic combination of these features, leading to a non-linear increase in information content at specific stimulus configurations that maximize the network's predictive capacity.
+
     """
     
     result = evaluator.evaluate_hypothesis(hypothesis, literature)

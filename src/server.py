@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from src.models.model import generate_hypothesis
 from src.Hypothesis_Analysis.information_density import ScientificHypothesisEvaluator
+from src.Hypothesis_Analysis.information_density_ import AdvancedHypothesisAnalyzer
+
 from PyPDF2 import PdfReader
 import io
 from typing import List
@@ -35,6 +37,7 @@ async def get_hypothesis(
     file_media: UploadFile = File(...) ):
  
     evaluator = ScientificHypothesisEvaluator()
+    evaluator_ = AdvancedHypothesisAnalyzer()
     try:
         if not phenomenon or len(phenomenon.strip()) == 0:
             raise HTTPException(status_code=400, detail="Phenomenon cannot be empty")
@@ -70,7 +73,8 @@ async def get_hypothesis(
             raise HTTPException(status_code=500, detail=f"Failed to extract PDF text: {str(e)}")
 
         try:
-            info_density = evaluator.evaluate_hypothesis(hypothesis, pdf_texts)
+            #info_density = evaluator.evaluate_hypothesis(hypothesis, pdf_texts)
+            info_density_ = evaluator_.analyze_hypothesis(hypothesis,pdf_texts)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to evaluate hypothesis: {str(e)}")
     
@@ -85,7 +89,7 @@ async def get_hypothesis(
         
         
         try:
-            evaluation_dict = asdict(info_density)
+            evaluation_dict = asdict(info_density_)
         except Exception as e:
             evaluation_dict = {"overall_quality": 0, "error": "Failed to process evaluation"}
         
